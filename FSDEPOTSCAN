@@ -6,6 +6,3 @@
 </main>
 </body>
 </html>
-git add index.html
-git commit -m "initial commit" index.html
-git push
