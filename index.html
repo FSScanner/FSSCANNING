@@ -25,5 +25,92 @@
 </main>
 
 <script type="module">
-    // scanning screen logic, see next section
+    import { StrichSDK, BarcodeReader } from 'https://cdn.jsdelivr.net/npm/@pixelverse/strichjs-sdk@latest';
+import { addItem, removeItem } from './lib/inventory.js';
+
+// list of items to check in or out, objects have a 'barcode' and a 'count' field
+let scannedItems = [];
+
+/**
+ * Add the scanned barcode to a temporary list of scanned items.
+ */
+function onItemScanned(barcode) {
+    let existing = scannedItems.find(item => item.barcode === barcode);
+    if (existing) {
+        existing.count++;
+    } else {
+        items.push({ barcode, count: 1 });
+    }
+
+    // update displayed item count
+    let totalCount = 0;
+    for (const item of scannedItems) {
+        totalCount += item.count;
+    }
+    document.getElementById('items-scanned').innerHTML = `${totalCount} items scanned`;
+}
+
+// read mode from query parameter and show respective header
+const queryParams = new URLSearchParams(window.location.search);
+const mode = queryParams.get('mode') ?? 'borrow';
+if (mode === 'borrow') {
+    document.getElementById('borrow-items').hidden = false;
+} else { // out
+    document.getElementById('return-items').hidden = false;
+}
+
+// initialize SDK and enable button when ready
+let barcodeReader = null;
+try {
+    const licenseKey = '<your license key here>';
+    await StrichSDK.initialize(licenseKey);
+
+    // BarcodeReader configuration, see: https://docs.strich.io/reference/interfaces/Configuration.html
+    const hostElement = document.getElementById('barcode-reader-host');
+    const config = {
+        selector: hostElement,
+        engine: {
+            symbologies: ['ean13', 'ean8', 'upca', 'upce', 'code128', 'code39'],
+            duplicateInterval: 2500
+        }
+    };
+    barcodeReader = new BarcodeReader(config);
+
+    // set detection callback
+    barcodeReader.detected = (detections) => {
+        for (let detection of detections) {
+            onItemScanned(detection.data);
+        }
+    };
+
+    // acquire camera
+    await barcodeReader.initialize();
+
+    // start decoding
+    await barcodeReader.start();
+} catch (err) {
+    // see: https://docs.strich.io/reference/classes/SdkError.html
+    alert(`Failed to initialize Barcode Scanning: ${err.message}`);
+}
+
+// finish scanning button commits items and navigates back to inventory
+document.getElementById('finish-scanning').onclick = async () => {
+
+    // stop and destroy BarcodeReader (releases camera)
+    await barcodeReader.destroy();
+
+    // add scanned items to inventory
+    for (const item of scannedItems) {
+        if (mode === 'return') {
+            // return: remove item from local inventory
+            removeItem(item);
+        } else {
+            // borrow: add item to local inventory
+            addItem(item);
+        }
+    }
+
+    // navigate back to main screen
+    document.location.href = 'index.html';
+}
 </script>
