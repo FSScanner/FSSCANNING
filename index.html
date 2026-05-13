@@ -1,78 +1,37 @@
-<!-- html5-qrcode library (CDN) -->
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
 
- <h2>Barcode / QR Scanner</h2>
+<input id="barcodeInput" placeholder="Scan here…" style="width:100%;font-size:20px;margin-bottom:20px;" autofocus>
 
-<!-- Input field that will receive the scanned code -->
-<label for="scanResult">Scanned code:</label>
-<input type="text" id="scanResult" style="width: 100%; max-width: 400px;" />
-
-<!-- Container where the camera preview & scanner will appear -->
-<div id="reader" style="width: 300px; margin-top: 20px;"></div>
-
-<button id="startScanBtn">Start scanning</button>
-<button id="stopScanBtn" disabled>Stop scanning</button>
+<div id="reader" style="width:300px;"></div>
 
 <script>
-  let html5QrcodeScanner = null;
+  const input = document.getElementById("barcodeInput");
+  input.focus();
 
-  const startScanBtn = document.getElementById("startScanBtn");
-  const stopScanBtn = document.getElementById("stopScanBtn");
-  const scanResultInput = document.getElementById("scanResult");
-
-  startScanBtn.addEventListener("click", async () => {
-    // If already running, do nothing
-    if (html5QrcodeScanner) return;
-
-    const config = {
-      fps: 10,                 // frames per second
-      qrbox: { width: 250, height: 250 }, // scanning box size
-      rememberLastUsedCamera: true
-    };
-
-    html5QrcodeScanner = new Html5Qrcode("reader");
-
-    try {
-      await html5QrcodeScanner.start(
-        { facingMode: "environment" }, // back camera on phones
-        config,
-        (decodedText, decodedResult) => {
-          // On successful scan
-          scanResultInput.value = decodedText;
-
-          // Optional: stop scanning automatically after first read
-          html5QrcodeScanner.stop().then(() => {
-            html5QrcodeScanner.clear();
-            html5QrcodeScanner = null;
-            startScanBtn.disabled = false;
-            stopScanBtn.disabled = true;
-          });
-        },
-        (errorMessage) => {
-          // On scan failure (ignored most of the time)
-          // console.log("Scan error:", errorMessage);
-        }
-      );
-
-      startScanBtn.disabled = true;
-      stopScanBtn.disabled = false;
-    } catch (err) {
-      console.error("Unable to start scanning:", err);
-      html5QrcodeScanner = null;
+  function wedgeType(text) {
+    input.value = "";
+    for (let char of text) {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: char }));
+      input.value += char;
+      input.dispatchEvent(new KeyboardEvent("keyup", { key: char }));
+      input.dispatchEvent(new Event("input"));
     }
-  });
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    input.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter" }));
+  }
 
-  stopScanBtn.addEventListener("click", () => {
-    if (!html5QrcodeScanner) return;
+  const scanner = new Html5Qrcode("reader");
 
-    html5QrcodeScanner.stop().then(() => {
-      html5QrcodeScanner.clear();
-      html5QrcodeScanner = null;
-      startScanBtn.disabled = false;
-      stopScanBtn.disabled = true;
-    }).catch(err => {
-      console.error("Error stopping scanner:", err);
-    });
-  });
+  scanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 250 },
+
+    // ✅ THIS IS WHERE YOUR CALLBACK GOES
+    (decodedText) => {
+      wedgeType(decodedText);
+      scanner.stop().then(() => scanner.clear());
+    },
+
+    (errorMessage) => {}
+  );
 </script>
-   
