@@ -22,7 +22,31 @@
   function sendToAppsScript(barcode) {
 
     // Send to parent Apps Script page
-    window.parent.postMessage(barcode, "*");
+    <!-- html5-qrcode library -->
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+<h2>Barcode / QR Scanner</h2>
+
+<label for="scanResult">Scanned code:</label>
+<input type="text" id="scanResult" style="width: 100%; max-width: 400px;" />
+
+<div id="reader" style="width: 300px; margin-top: 20px;"></div>
+
+<button id="startScanBtn">Start scanning</button>
+<button id="stopScanBtn" disabled>Stop scanning</button>
+
+<script>
+  let html5QrcodeScanner = null;
+
+  const startScanBtn = document.getElementById("startScanBtn");
+  const stopScanBtn = document.getElementById("stopScanBtn");
+  const scanResultInput = document.getElementById("scanResult");
+
+  // 🔥 SEND TO APPS SCRIPT
+  function sendToAppsScript(barcode) {
+
+    // Send to parent Apps Script page
+    window.parent.postMessage(barcode, "https://script.google.com");
 
   }
 
@@ -53,7 +77,10 @@
           scanResultInput.value = cleaned;
 
           // 🔥 SEND TO MAIN APP
-          sendToAppsScript(cleaned);
+          window.parent.postMessage({
+  type: "barcode",
+  value: cleaned
+}, "*");
 
           html5QrcodeScanner.stop().then(() => {
             html5QrcodeScanner.clear();
