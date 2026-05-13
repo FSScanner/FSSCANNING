@@ -1,116 +1,78 @@
-<main>
+<!-- html5-qrcode library (CDN) -->
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
-    <!-- Return items header -->
-    <div id="return-items" hidden>
-        <h1>Return Items</h1>
-        <p>Return items to the storage by scanning their barcodes.</p>
-    </div>
+ <h2>Barcode / QR Scanner</h2>
 
-    <!-- Borrow items header -->
-    <div id="borrow-items" hidden>
-        <h1>Borrow Items</h1>
-        <p>Take items from the storage by scanning their barcodes.</p>
-    </div>
+<!-- Input field that will receive the scanned code -->
+<label for="scanResult">Scanned code:</label>
+<input type="text" id="scanResult" style="width: 100%; max-width: 400px;" />
 
-    <!-- STRICH BarcodeReader host element -->
-    <div id="barcode-reader-host" style="position: relative; height: 240px"></div>
+<!-- Container where the camera preview & scanner will appear -->
+<div id="reader" style="width: 300px; margin-top: 20px;"></div>
 
-    <!-- number of items scanned -->
-    <p id="items-scanned">No items scanned yet</p>
+<button id="startScanBtn">Start scanning</button>
+<button id="stopScanBtn" disabled>Stop scanning</button>
 
-    <!-- Finish Scanning button -->
-    <button id="finish-scanning">
-        Finish Scanning
-    </button>
-</main>
+<script>
+  let html5QrcodeScanner = null;
 
-<script type="module">
-    import { StrichSDK, BarcodeReader } from 'https://cdn.jsdelivr.net/npm/@pixelverse/strichjs-sdk@latest';
-import { addItem, removeItem } from './lib/inventory.js';
+  const startScanBtn = document.getElementById("startScanBtn");
+  const stopScanBtn = document.getElementById("stopScanBtn");
+  const scanResultInput = document.getElementById("scanResult");
 
-// list of items to check in or out, objects have a 'barcode' and a 'count' field
-let scannedItems = [];
+  startScanBtn.addEventListener("click", async () => {
+    // If already running, do nothing
+    if (html5QrcodeScanner) return;
 
-/**
- * Add the scanned barcode to a temporary list of scanned items.
- */
-function onItemScanned(barcode) {
-    let existing = scannedItems.find(item => item.barcode === barcode);
-    if (existing) {
-        existing.count++;
-    } else {
-        items.push({ barcode, count: 1 });
-    }
-
-    // update displayed item count
-    let totalCount = 0;
-    for (const item of scannedItems) {
-        totalCount += item.count;
-    }
-    document.getElementById('items-scanned').innerHTML = `${totalCount} items scanned`;
-}
-
-// read mode from query parameter and show respective header
-const queryParams = new URLSearchParams(window.location.search);
-const mode = queryParams.get('mode') ?? 'borrow';
-if (mode === 'borrow') {
-    document.getElementById('borrow-items').hidden = false;
-} else { // out
-    document.getElementById('return-items').hidden = false;
-}
-
-// initialize SDK and enable button when ready
-let barcodeReader = null;
-try {
-    const licenseKey = '<your license key here>';
-    await StrichSDK.initialize(licenseKey);
-
-    // BarcodeReader configuration, see: https://docs.strich.io/reference/interfaces/Configuration.html
-    const hostElement = document.getElementById('barcode-reader-host');
     const config = {
-        selector: hostElement,
-        engine: {
-            symbologies: ['ean13', 'ean8', 'upca', 'upce', 'code128', 'code39'],
-            duplicateInterval: 2500
-        }
-    };
-    barcodeReader = new BarcodeReader(config);
-
-    // set detection callback
-    barcodeReader.detected = (detections) => {
-        for (let detection of detections) {
-            onItemScanned(detection.data);
-        }
+      fps: 10,                 // frames per second
+      qrbox: { width: 250, height: 250 }, // scanning box size
+      rememberLastUsedCamera: true
     };
 
-    // acquire camera
-    await barcodeReader.initialize();
+    html5QrcodeScanner = new Html5Qrcode("reader");
 
-    // start decoding
-    await barcodeReader.start();
-} catch (err) {
-    // see: https://docs.strich.io/reference/classes/SdkError.html
-    alert(`Failed to initialize Barcode Scanning: ${err.message}`);
-}
+    try {
+      await html5QrcodeScanner.start(
+        { facingMode: "environment" }, // back camera on phones
+        config,
+        (decodedText, decodedResult) => {
+          // On successful scan
+          scanResultInput.value = decodedText;
 
-// finish scanning button commits items and navigates back to inventory
-document.getElementById('finish-scanning').onclick = async () => {
-
-    // stop and destroy BarcodeReader (releases camera)
-    await barcodeReader.destroy();
-
-    // add scanned items to inventory
-    for (const item of scannedItems) {
-        if (mode === 'return') {
-            // return: remove item from local inventory
-            removeItem(item);
-        } else {
-            // borrow: add item to local inventory
-            addItem(item);
+          // Optional: stop scanning automatically after first read
+          html5QrcodeScanner.stop().then(() => {
+            html5QrcodeScanner.clear();
+            html5QrcodeScanner = null;
+            startScanBtn.disabled = false;
+            stopScanBtn.disabled = true;
+          });
+        },
+        (errorMessage) => {
+          // On scan failure (ignored most of the time)
+          // console.log("Scan error:", errorMessage);
         }
+      );
+
+      startScanBtn.disabled = true;
+      stopScanBtn.disabled = false;
+    } catch (err) {
+      console.error("Unable to start scanning:", err);
+      html5QrcodeScanner = null;
     }
+  });
 
-    // navigate back to main screen
-    document.location.href = 'index.html';
-}
+  stopScanBtn.addEventListener("click", () => {
+    if (!html5QrcodeScanner) return;
+
+    html5QrcodeScanner.stop().then(() => {
+      html5QrcodeScanner.clear();
+      html5QrcodeScanner = null;
+      startScanBtn.disabled = false;
+      stopScanBtn.disabled = true;
+    }).catch(err => {
+      console.error("Error stopping scanner:", err);
+    });
+  });
 </script>
+   
