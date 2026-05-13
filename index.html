@@ -46,7 +46,7 @@
   function sendToAppsScript(barcode) {
 
     // Send to parent Apps Script page
-    window.parent.postMessage(barcode, "https://script.google.com");
+    window.opener.postMessage({type: barcode, value: barcode.trim()}, "https://script.google.com");
 
   }
 
