@@ -1,8 +1,29 @@
-<!DOCTYPE html>
-<html lang="en">
-<body>
 <main>
-  <h1>Hello, world!</h1>
+
+    <!-- Return items header -->
+    <div id="return-items" hidden>
+        <h1>Return Items</h1>
+        <p>Return items to the storage by scanning their barcodes.</p>
+    </div>
+
+    <!-- Borrow items header -->
+    <div id="borrow-items" hidden>
+        <h1>Borrow Items</h1>
+        <p>Take items from the storage by scanning their barcodes.</p>
+    </div>
+
+    <!-- STRICH BarcodeReader host element -->
+    <div id="barcode-reader-host" style="position: relative; height: 240px"></div>
+
+    <!-- number of items scanned -->
+    <p id="items-scanned">No items scanned yet</p>
+
+    <!-- Finish Scanning button -->
+    <button id="finish-scanning">
+        Finish Scanning
+    </button>
 </main>
-</body>
-</html>
+
+<script type="module">
+    // scanning screen logic, see next section
+</script>
