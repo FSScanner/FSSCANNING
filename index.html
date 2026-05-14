@@ -18,15 +18,19 @@
   const stopScanBtn = document.getElementById("stopScanBtn");
   const scanResultInput = document.getElementById("scanResult");
 
-  // 🔥 SEND TO APPS SCRIPT
-  function sendToAppsScript(barcode) {
+  function sendToAppsScript(value) {
+    const cleaned = value.trim();
 
-    // Send to parent Apps Script page
+    // safety check
+    if (!window.opener) {
+      console.warn("No opener window found");
+      return;
+    }
+
     window.opener.postMessage({
-  type: "barcode",
-  value: cleaned
-}, "*");
-
+      type: "barcode",
+      value: cleaned
+    }, "*");
   }
 
   startScanBtn.addEventListener("click", async () => {
@@ -35,8 +39,7 @@
 
     const config = {
       fps: 10,
-      qrbox: { width: 250, height: 250 },
-      rememberLastUsedCamera: true
+      qrbox: { width: 250, height: 250 }
     };
 
     html5QrcodeScanner = new Html5Qrcode("reader");
@@ -52,15 +55,13 @@
 
           const cleaned = decodedText.trim();
 
-          // still show locally (optional)
+          // show locally
           scanResultInput.value = cleaned;
 
-          // 🔥 SEND TO MAIN APP
-          window.opener.postMessage({
-  type: "barcode",
-  value: cleaned
-}, "*");
+          // send to Apps Script
+          sendToAppsScript(cleaned);
 
+          // stop scanner immediately after scan
           html5QrcodeScanner.stop().then(() => {
             html5QrcodeScanner.clear();
             html5QrcodeScanner = null;
@@ -72,7 +73,6 @@
         },
 
         (errorMessage) => {}
-
       );
 
       startScanBtn.disabled = true;
@@ -95,7 +95,6 @@
 
       startScanBtn.disabled = false;
       stopScanBtn.disabled = true;
-
     });
 
   });
