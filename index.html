@@ -31,6 +31,11 @@
       type: "barcode",
       value: cleaned
     }, "*");
+
+    // 🔥 AUTO CLOSE POPUP AFTER SENDING
+    setTimeout(() => {
+      window.close();
+    }, 150);
   }
 
   startScanBtn.addEventListener("click", async () => {
@@ -58,10 +63,10 @@
           // show locally
           scanResultInput.value = cleaned;
 
-          // send to Apps Script
+          // send to Apps Script + auto-close handled inside
           sendToAppsScript(cleaned);
 
-          // stop scanner immediately after scan
+          // stop scanner first (clean shutdown)
           html5QrcodeScanner.stop().then(() => {
             html5QrcodeScanner.clear();
             html5QrcodeScanner = null;
