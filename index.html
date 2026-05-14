@@ -22,7 +22,10 @@
   function sendToAppsScript(barcode) {
 
     // Send to parent Apps Script page
-    window.opener.postMessage({type: barcode, value: barcode.trim()}, "https://script.google.com");
+    window.opener.postMessage({
+  type: "barcode",
+  value: cleaned
+}, "*");
 
   }
 
@@ -53,7 +56,7 @@
           scanResultInput.value = cleaned;
 
           // 🔥 SEND TO MAIN APP
-          window.parent.postMessage({
+          window.opener.postMessage({
   type: "barcode",
   value: cleaned
 }, "*");
