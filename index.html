@@ -1,106 +1,397 @@
-<!-- html5-qrcode library -->
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<!DOCTYPE html>
+<html>
+<head>
 
-<h2>Barcode / QR Scanner</h2>
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
 
-<label for="scanResult">Scanned code:</label>
-<input type="text" id="scanResult" style="width: 100%; max-width: 400px;" />
+<title>FS Scanner</title>
 
-<div id="reader" style="width: 300px; margin-top: 20px;"></div>
+<script src="https://unpkg.com/html5-qrcode"></script>
 
-<button id="startScanBtn">Start scanning</button>
-<button id="stopScanBtn" disabled>Stop scanning</button>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<style>
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #111;
+  color: white;
+  font-family: Arial, sans-serif;
+  overflow: hidden;
+}
+
+#topBar {
+
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+
+  z-index: 9999;
+
+  background: rgba(0,0,0,0.85);
+
+  padding: 12px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+h2 {
+  margin: 0;
+  font-size: 28px;
+  text-align: center;
+}
+
+#scanResult {
+
+  width: 100%;
+  box-sizing: border-box;
+
+  padding: 14px;
+
+  font-size: 24px;
+
+  border-radius: 8px;
+  border: none;
+}
+
+.buttonRow {
+
+  display: flex;
+  gap: 10px;
+}
+
+button {
+
+  flex: 1;
+
+  padding: 16px;
+
+  font-size: 22px;
+  font-weight: bold;
+
+  border: none;
+  border-radius: 8px;
+
+  cursor: pointer;
+}
+
+#startScanBtn {
+  background: #fbbf00;
+  color: black;
+}
+
+#stopScanBtn {
+  background: #cc0000;
+  color: white;
+}
+
+#ocrBtn {
+  background: #0099ff;
+  color: white;
+}
+
+#reader {
+
+  position: fixed;
+
+  top: 170px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  width: 100vw;
+  height: calc(100vh - 170px);
+
+  overflow: hidden;
+}
+
+video {
+  object-fit: cover !important;
+}
+
+#statusMessage {
+
+  position: fixed;
+
+  bottom: 10px;
+  left: 10px;
+  right: 10px;
+
+  z-index: 9999;
+
+  background: rgba(0,0,0,0.8);
+
+  padding: 12px;
+
+  border-radius: 8px;
+
+  text-align: center;
+
+  font-size: 20px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="topBar">
+
+  <h2>FS Scanner</h2>
+
+  <input type="text"
+         id="scanResult"
+         placeholder="Scanned result">
+
+  <div class="buttonRow">
+
+    <button id="startScanBtn">
+      Start
+    </button>
+
+    <button id="stopScanBtn" disabled>
+      Stop
+    </button>
+
+    <button id="ocrBtn">
+      OCR
+    </button>
+
+  </div>
+
+</div>
+
+<div id="reader"></div>
+
+<div id="statusMessage">
+  Ready
+</div>
 
 <script>
-  let html5QrcodeScanner = null;
 
-  const startScanBtn = document.getElementById("startScanBtn");
-  const stopScanBtn = document.getElementById("stopScanBtn");
-  const scanResultInput = document.getElementById("scanResult");
+let html5QrcodeScanner = null;
 
-  function sendToAppsScript(value) {
-    const cleaned = value.trim();
+const scanResultInput =
+  document.getElementById("scanResult");
 
-    // safety check
-    if (!window.opener) {
-      console.warn("No opener window found");
+const statusMessage =
+  document.getElementById("statusMessage");
+
+function setStatus(message) {
+  statusMessage.innerText = message;
+}
+
+function cleanValue(value) {
+
+  return value
+    .trim()
+    .replace(/_S$/i, '')
+    .replace(/-RD1$/i, '')
+    .replace(/^COLL-/i, '');
+
+}
+
+function sendToAppsScript(value) {
+
+  const cleaned = cleanValue(value);
+
+  scanResultInput.value = cleaned;
+
+  if (!window.opener) {
+    alert("No parent window found");
+    return;
+  }
+
+  window.opener.postMessage({
+    type: "barcode",
+    value: cleaned
+  }, "*");
+
+  setStatus("Sent: " + cleaned);
+
+  setTimeout(() => {
+    window.close();
+  }, 300);
+
+}
+
+async function startScanner() {
+
+  if (html5QrcodeScanner) return;
+
+  html5QrcodeScanner =
+    new Html5Qrcode("reader");
+
+  try {
+
+    await html5QrcodeScanner.start(
+
+      {
+        facingMode: "environment"
+      },
+
+      {
+        fps: 10,
+        qrbox: null
+      },
+
+      (decodedText) => {
+
+        setStatus("Barcode detected");
+
+        sendToAppsScript(decodedText);
+
+        stopScanner();
+
+      }
+
+    );
+
+    document.getElementById("startScanBtn").disabled = true;
+    document.getElementById("stopScanBtn").disabled = false;
+
+    setStatus("Scanning...");
+
+  } catch(err) {
+
+    console.error(err);
+
+    setStatus("Camera failed");
+
+  }
+
+}
+
+async function stopScanner() {
+
+  if (!html5QrcodeScanner) return;
+
+  try {
+
+    await html5QrcodeScanner.stop();
+
+    await html5QrcodeScanner.clear();
+
+  } catch(e) {}
+
+  html5QrcodeScanner = null;
+
+  document.getElementById("startScanBtn").disabled = false;
+  document.getElementById("stopScanBtn").disabled = true;
+
+  setStatus("Stopped");
+
+}
+
+/* =========================
+   OCR MODE
+========================= */
+
+async function runOCR() {
+
+  setStatus("Reading text...");
+
+  try {
+
+    const video =
+      document.querySelector("video");
+
+    if (!video) {
+      alert("Camera not running");
       return;
     }
 
-    window.opener.postMessage({
-      type: "barcode",
-      value: cleaned
-    }, "*");
+    const canvas =
+      document.createElement("canvas");
 
-    // 🔥 AUTO CLOSE POPUP AFTER SENDING
-    setTimeout(() => {
-      window.close();
-    }, 150);
-  }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
-  startScanBtn.addEventListener("click", async () => {
+    const ctx =
+      canvas.getContext("2d");
 
-    if (html5QrcodeScanner) return;
+    ctx.drawImage(
+      video,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
 
-    const config = {
-      fps: 2,
-      qrbox: { width: 250, height: 250 }
-    };
+    const image =
+      canvas.toDataURL("image/png");
 
-    html5QrcodeScanner = new Html5Qrcode("reader");
-
-    try {
-
-      await html5QrcodeScanner.start(
-        { facingMode: "environment" },
-
-        config,
-
-        (decodedText) => {
-
-          const cleaned = decodedText.trim();
-
-          // show locally
-          scanResultInput.value = cleaned;
-
-          // send to Apps Script + auto-close handled inside
-          sendToAppsScript(cleaned);
-
-          // stop scanner first (clean shutdown)
-          html5QrcodeScanner.stop().then(() => {
-            html5QrcodeScanner.clear();
-            html5QrcodeScanner = null;
-
-            startScanBtn.disabled = false;
-            stopScanBtn.disabled = true;
-          });
-
-        },
-
-        (errorMessage) => {}
+    const result =
+      await Tesseract.recognize(
+        image,
+        'eng'
       );
 
-      startScanBtn.disabled = true;
-      stopScanBtn.disabled = false;
+    const text =
+      result.data.text;
 
-    } catch (err) {
-      console.error("Unable to start scanning:", err);
-      html5QrcodeScanner = null;
+    console.log(text);
+
+    // FIND POSSIBLE ORDER NUMBER
+    const match =
+      text.match(/[A-Z0-9-]{6,}/i);
+
+    if (!match) {
+
+      setStatus("No text match found");
+
+      alert("No order number found");
+
+      return;
+
     }
 
-  });
+    const extracted =
+      cleanValue(match[0]);
 
-  stopScanBtn.addEventListener("click", () => {
+    setStatus("Text detected");
 
-    if (!html5QrcodeScanner) return;
+    sendToAppsScript(extracted);
 
-    html5QrcodeScanner.stop().then(() => {
-      html5QrcodeScanner.clear();
-      html5QrcodeScanner = null;
+  } catch(err) {
 
-      startScanBtn.disabled = false;
-      stopScanBtn.disabled = true;
-    });
+    console.error(err);
 
-  });
+    setStatus("OCR failed");
+
+  }
+
+}
+
+/* =========================
+   BUTTONS
+========================= */
+
+document
+  .getElementById("startScanBtn")
+  .addEventListener("click", startScanner);
+
+document
+  .getElementById("stopScanBtn")
+  .addEventListener("click", stopScanner);
+
+document
+  .getElementById("ocrBtn")
+  .addEventListener("click", runOCR);
+
+/* =========================
+   AUTO START
+========================= */
+
+startScanner();
+
 </script>
+
+</body>
+</html>
