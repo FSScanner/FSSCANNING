@@ -177,6 +177,9 @@ video {
 
 let html5QrcodeScanner = null;
 
+let lastDetected = "";
+let detectionCount = 0;
+
 const scanResultInput =
   document.getElementById("scanResult");
 
@@ -184,7 +187,9 @@ const statusMessage =
   document.getElementById("statusMessage");
 
 function setStatus(message) {
+
   statusMessage.innerText = message;
+
 }
 
 function cleanValue(value) {
@@ -201,22 +206,33 @@ function sendToAppsScript(value) {
 
   const cleaned = cleanValue(value);
 
+  // RESET CONFIRMATION TRACKING
+  lastDetected = "";
+  detectionCount = 0;
+
   scanResultInput.value = cleaned;
 
   if (!window.opener) {
+
     alert("No parent window found");
+
     return;
+
   }
 
   window.opener.postMessage({
+
     type: "barcode",
     value: cleaned
+
   }, "*");
 
   setStatus("Sent: " + cleaned);
 
   setTimeout(() => {
+
     window.close();
+
   }, 300);
 
 }
@@ -237,24 +253,78 @@ async function startScanner() {
       },
 
       {
-        fps: 10,
-        qrbox: null
+        fps: 5,
+
+        qrbox: {
+          width: 350,
+          height: 180
+        }
       },
 
       (decodedText) => {
 
-        setStatus("Barcode detected");
+        const cleaned =
+          cleanValue(decodedText)
+          .toUpperCase();
 
-        sendToAppsScript(decodedText);
+        console.log(
+          "Raw barcode:",
+          cleaned
+        );
 
-        stopScanner();
+        // ONLY ALLOW VALID ORDER PREFIXES
+        const valid =
+          /^(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9-]+$/i
+          .test(cleaned);
+
+        if (!valid) {
+
+          setStatus(
+            "Ignoring invalid barcode"
+          );
+
+          return;
+
+        }
+
+        // REQUIRE SAME RESULT TWICE
+        if (cleaned === lastDetected) {
+
+          detectionCount++;
+
+        } else {
+
+          lastDetected = cleaned;
+          detectionCount = 1;
+
+        }
+
+        setStatus(
+          `Confirming scan (${detectionCount}/2)`
+        );
+
+        // ACCEPT ONLY AFTER 2 MATCHES
+        if (detectionCount >= 2) {
+
+          setStatus("Barcode confirmed");
+
+          sendToAppsScript(cleaned);
+
+          stopScanner();
+
+        }
 
       }
 
     );
 
-    document.getElementById("startScanBtn").disabled = true;
-    document.getElementById("stopScanBtn").disabled = false;
+    document
+      .getElementById("startScanBtn")
+      .disabled = true;
+
+    document
+      .getElementById("stopScanBtn")
+      .disabled = false;
 
     setStatus("Scanning...");
 
@@ -282,8 +352,13 @@ async function stopScanner() {
 
   html5QrcodeScanner = null;
 
-  document.getElementById("startScanBtn").disabled = false;
-  document.getElementById("stopScanBtn").disabled = true;
+  document
+    .getElementById("startScanBtn")
+    .disabled = false;
+
+  document
+    .getElementById("stopScanBtn")
+    .disabled = true;
 
   setStatus("Stopped");
 
@@ -303,8 +378,11 @@ async function runOCR() {
       document.querySelector("video");
 
     if (!video) {
+
       alert("Camera not running");
+
       return;
+
     }
 
     const canvas =
@@ -338,15 +416,26 @@ async function runOCR() {
 
     console.log(text);
 
-    // FIND POSSIBLE ORDER NUMBER
+    // CLEAN OCR TEXT
+    const cleanedText = text
+
+      .replace(/\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .toUpperCase();
+
+    // LOOK FOR VALID PREFIXES
     const match =
-      text.match(/[A-Z0-9-]{6,}/i);
+      cleanedText.match(
+        /\b(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9-]+\b/
+      );
 
     if (!match) {
 
-      setStatus("No text match found");
+      setStatus("No valid order found");
 
-      alert("No order number found");
+      alert(
+        "No valid order number detected"
+      );
 
       return;
 
@@ -355,7 +444,7 @@ async function runOCR() {
     const extracted =
       cleanValue(match[0]);
 
-    setStatus("Text detected");
+    setStatus("Order detected");
 
     sendToAppsScript(extracted);
 
@@ -375,15 +464,24 @@ async function runOCR() {
 
 document
   .getElementById("startScanBtn")
-  .addEventListener("click", startScanner);
+  .addEventListener(
+    "click",
+    startScanner
+  );
 
 document
   .getElementById("stopScanBtn")
-  .addEventListener("click", stopScanner);
+  .addEventListener(
+    "click",
+    stopScanner
+  );
 
 document
   .getElementById("ocrBtn")
-  .addEventListener("click", runOCR);
+  .addEventListener(
+    "click",
+    runOCR
+  );
 
 /* =========================
    AUTO START
