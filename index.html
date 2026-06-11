@@ -2,13 +2,11 @@
 <html>
 <head>
 
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>FS Scanner</title>
 
 <script src="https://unpkg.com/html5-qrcode"></script>
-
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style>
@@ -23,18 +21,13 @@ body {
 }
 
 #topBar {
-
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-
   z-index: 9999;
-
   background: rgba(0,0,0,0.85);
-
   padding: 12px;
-
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -47,66 +40,41 @@ h2 {
 }
 
 #scanResult {
-
   width: 100%;
   box-sizing: border-box;
-
   padding: 14px;
-
   font-size: 24px;
-
   border-radius: 8px;
   border: none;
 }
 
 .buttonRow {
-
   display: flex;
   gap: 10px;
 }
 
 button {
-
   flex: 1;
-
   padding: 16px;
-
   font-size: 22px;
   font-weight: bold;
-
   border: none;
   border-radius: 8px;
-
   cursor: pointer;
 }
 
-#startScanBtn {
-  background: #fbbf00;
-  color: black;
-}
-
-#stopScanBtn {
-  background: #cc0000;
-  color: white;
-}
-
-#ocrBtn {
-  background: #0099ff;
-  color: white;
-}
+#startScanBtn { background: #fbbf00; color: black; }
+#stopScanBtn { background: #cc0000; color: white; }
+#ocrBtn { background: #0099ff; color: white; }
 
 #reader {
-
   position: fixed;
-
   top: 170px;
   left: 0;
   right: 0;
   bottom: 0;
-
   width: 100vw;
   height: calc(100vh - 170px);
-
   overflow: hidden;
 }
 
@@ -115,23 +83,15 @@ video {
 }
 
 #statusMessage {
-
   position: fixed;
-
   bottom: 10px;
   left: 10px;
   right: 10px;
-
   z-index: 9999;
-
   background: rgba(0,0,0,0.8);
-
   padding: 12px;
-
   border-radius: 8px;
-
   text-align: center;
-
   font-size: 20px;
 }
 
@@ -145,197 +105,116 @@ video {
 
   <h2>FS Scanner</h2>
 
-  <input type="text"
-         id="scanResult"
-         placeholder="Scanned result">
+  <input type="text" id="scanResult" placeholder="Scanned result">
 
   <div class="buttonRow">
-
-    <button id="startScanBtn">
-      Start
-    </button>
-
-    <button id="stopScanBtn" disabled>
-      Stop
-    </button>
-
-    <button id="ocrBtn">
-      OCR
-    </button>
-
+    <button id="startScanBtn">Start</button>
+    <button id="stopScanBtn" disabled>Stop</button>
+    <button id="ocrBtn">OCR</button>
   </div>
 
 </div>
 
 <div id="reader"></div>
 
-<div id="statusMessage">
-  Ready
-</div>
+<div id="statusMessage">Ready</div>
 
 <script>
 
 let html5QrcodeScanner = null;
-
 let lastDetected = "";
 let detectionCount = 0;
 
-const scanResultInput =
-  document.getElementById("scanResult");
-
-const statusMessage =
-  document.getElementById("statusMessage");
+const scanResultInput = document.getElementById("scanResult");
+const statusMessage = document.getElementById("statusMessage");
 
 function setStatus(message) {
-
   statusMessage.innerText = message;
-
 }
 
-function cleanValue(value) {
-
-  return value
-    .trim()
-    .replace(/_S$/i, '')
-    .replace(/-RD1$/i, '')
-    .replace(/^COLL-/i, '');
-
-}
-
+/* =========================
+   🚨 DO SAFE: NO CLEANING
+========================= */
 function sendToAppsScript(value) {
 
-  const cleaned = cleanValue(value);
+  const raw = value.toString().trim(); // 🔥 DO NOT MODIFY
 
-  // RESET CONFIRMATION TRACKING
   lastDetected = "";
   detectionCount = 0;
 
-  scanResultInput.value = cleaned;
+  scanResultInput.value = raw;
 
   if (!window.opener) {
-
     alert("No parent window found");
-
     return;
-
   }
 
   window.opener.postMessage({
-
     type: "barcode",
-    value: cleaned
-
+    value: raw   // 🔥 SEND EXACT VALUE INCLUDING /1
   }, "*");
 
-  setStatus("Sent: " + cleaned);
+  setStatus("Sent: " + raw);
 
   setTimeout(() => {
-
     window.close();
-
   }, 300);
-
 }
 
 async function startScanner() {
 
   if (html5QrcodeScanner) return;
 
-  html5QrcodeScanner =
-    new Html5Qrcode("reader");
+  html5QrcodeScanner = new Html5Qrcode("reader");
 
   try {
 
     await html5QrcodeScanner.start(
 
-      {
-        facingMode: "environment"
-      },
+      { facingMode: "environment" },
 
       {
         fps: 5,
-
-        qrbox: {
-          width: 350,
-          height: 180
-        }
+        qrbox: { width: 350, height: 180 }
       },
 
       (decodedText) => {
 
-        const cleaned =
-          cleanValue(decodedText)
-          .toUpperCase();
+        const raw = decodedText.toString().trim();
 
-        console.log(
-          "Raw barcode:",
-          cleaned
-        );
+        console.log("Raw barcode:", raw);
 
-        // ONLY ALLOW VALID ORDER PREFIXES
-        const valid =
-          /^(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9-]+$/i
-          .test(cleaned);
-
-        if (!valid) {
-
-          setStatus(
-            "Ignoring invalid barcode"
-          );
-
-          return;
-
-        }
-
-        // REQUIRE SAME RESULT TWICE
-        if (cleaned === lastDetected) {
-
+        if (raw === lastDetected) {
           detectionCount++;
-
         } else {
-
-          lastDetected = cleaned;
+          lastDetected = raw;
           detectionCount = 1;
-
         }
 
-        setStatus(
-          `Confirming scan (${detectionCount}/2)`
-        );
+        setStatus(`Confirming scan (${detectionCount}/2)`);
 
-        // ACCEPT ONLY AFTER 2 MATCHES
         if (detectionCount >= 2) {
 
           setStatus("Barcode confirmed");
 
-          sendToAppsScript(cleaned);
+          sendToAppsScript(raw);
 
           stopScanner();
-
         }
 
       }
 
     );
 
-    document
-      .getElementById("startScanBtn")
-      .disabled = true;
-
-    document
-      .getElementById("stopScanBtn")
-      .disabled = false;
+    document.getElementById("startScanBtn").disabled = true;
+    document.getElementById("stopScanBtn").disabled = false;
 
     setStatus("Scanning...");
 
   } catch(err) {
-
     console.error(err);
-
     setStatus("Camera failed");
-
   }
-
 }
 
 async function stopScanner() {
@@ -343,29 +222,20 @@ async function stopScanner() {
   if (!html5QrcodeScanner) return;
 
   try {
-
     await html5QrcodeScanner.stop();
-
     await html5QrcodeScanner.clear();
-
   } catch(e) {}
 
   html5QrcodeScanner = null;
 
-  document
-    .getElementById("startScanBtn")
-    .disabled = false;
-
-  document
-    .getElementById("stopScanBtn")
-    .disabled = true;
+  document.getElementById("startScanBtn").disabled = false;
+  document.getElementById("stopScanBtn").disabled = true;
 
   setStatus("Stopped");
-
 }
 
 /* =========================
-   OCR MODE
+   OCR MODE (UNCHANGED)
 ========================= */
 
 async function runOCR() {
@@ -374,114 +244,60 @@ async function runOCR() {
 
   try {
 
-    const video =
-      document.querySelector("video");
+    const video = document.querySelector("video");
 
     if (!video) {
-
       alert("Camera not running");
-
       return;
-
     }
 
-    const canvas =
-      document.createElement("canvas");
+    const canvas = document.createElement("canvas");
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
-    const ctx =
-      canvas.getContext("2d");
+    const ctx = canvas.getContext("2d");
 
-    ctx.drawImage(
-      video,
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    );
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const image =
-      canvas.toDataURL("image/png");
+    const image = canvas.toDataURL("image/png");
 
-    const result =
-      await Tesseract.recognize(
-        image,
-        'eng'
-      );
+    const result = await Tesseract.recognize(image, 'eng');
 
-    const text =
-      result.data.text;
+    const text = result.data.text;
 
-    console.log(text);
-
-    // CLEAN OCR TEXT
     const cleanedText = text
-
       .replace(/\n/g, ' ')
       .replace(/\s+/g, ' ')
       .toUpperCase();
 
-    // LOOK FOR VALID PREFIXES
-    const match =
-      cleanedText.match(
-        /\b(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9-]+\b/
-      );
+    const match = cleanedText.match(
+      /\b(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9-]+\b/
+    );
 
     if (!match) {
-
       setStatus("No valid order found");
-
-      alert(
-        "No valid order number detected"
-      );
-
+      alert("No valid order number detected");
       return;
-
     }
 
-    const extracted =
-      cleanValue(match[0]);
+    sendToAppsScript(match[0]);
 
     setStatus("Order detected");
 
-    sendToAppsScript(extracted);
-
   } catch(err) {
-
     console.error(err);
-
     setStatus("OCR failed");
-
   }
-
 }
 
 /* =========================
    BUTTONS
 ========================= */
 
-document
-  .getElementById("startScanBtn")
-  .addEventListener(
-    "click",
-    startScanner
-  );
-
-document
-  .getElementById("stopScanBtn")
-  .addEventListener(
-    "click",
-    stopScanner
-  );
-
-document
-  .getElementById("ocrBtn")
-  .addEventListener(
-    "click",
-    runOCR
-  );
+document.getElementById("startScanBtn").addEventListener("click", startScanner);
+document.getElementById("stopScanBtn").addEventListener("click", stopScanner);
+document.getElementById("ocrBtn").addEventListener("click", runOCR);
 
 /* =========================
    AUTO START
