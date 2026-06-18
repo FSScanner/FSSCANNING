@@ -110,7 +110,7 @@ video {
   <div class="buttonRow">
     <button id="startScanBtn">Start</button>
     <button id="stopScanBtn" disabled>Stop</button>
-    <button id="ocrBtn">OCR</button>
+    <button id="ocrBtn">SCAN TEXT</button>
   </div>
 
 </div>
@@ -257,22 +257,27 @@ async function runOCR() {
     canvas.height = video.videoHeight;
 
     const ctx = canvas.getContext("2d");
-
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const image = canvas.toDataURL("image/png");
 
     const result = await Tesseract.recognize(image, 'eng');
 
-    const text = result.data.text;
+    const text = result.data.text || "";
 
+    // ✅ KEEP STRUCTURE (DO NOT REMOVE /)
     const cleanedText = text
+      .toUpperCase()
+      .replace(/\r/g, ' ')
       .replace(/\n/g, ' ')
-      .replace(/\s+/g, ' ')
-      .toUpperCase();
+      .replace(/\s+/g, ' ');
 
+    console.log("OCR RAW:", text);
+    console.log("OCR CLEAN:", cleanedText);
+
+    // ✅ ALLOW / IN MATCHING
     const match = cleanedText.match(
-      /\b(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9-]+\b/
+      /\b(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9\/-]*\b/
     );
 
     if (!match) {
@@ -281,7 +286,9 @@ async function runOCR() {
       return;
     }
 
-    sendToAppsScript(match[0]);
+    const order = match[0].trim();
+
+    sendToAppsScript(order);
 
     setStatus("Order detected");
 
