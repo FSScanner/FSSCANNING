@@ -56,7 +56,7 @@ h2 {
 button {
   flex: 1;
   padding: 16px;
-  font-size: 18px;
+  font-size: 22px;
   font-weight: bold;
   border: none;
   border-radius: 8px;
@@ -66,16 +66,15 @@ button {
 #startScanBtn { background: #fbbf00; color: black; }
 #stopScanBtn { background: #cc0000; color: white; }
 #ocrBtn { background: #0099ff; color: white; }
-#flashBtn { background: #ffaa00; color: black; }
 
 #reader {
   position: fixed;
-  top: 220px;
+  top: 170px;
   left: 0;
   right: 0;
   bottom: 0;
   width: 100vw;
-  height: calc(100vh - 220px);
+  height: calc(100vh - 170px);
   overflow: hidden;
 }
 
@@ -111,11 +110,7 @@ video {
   <div class="buttonRow">
     <button id="startScanBtn">Start</button>
     <button id="stopScanBtn" disabled>Stop</button>
-  </div>
-
-  <div class="buttonRow">
-    <button id="ocrBtn">SCAN TEXT</button>
-    <button id="flashBtn">FLASH</button>
+    <button id="ocrBtn">Scan Text</button>
   </div>
 
 </div>
@@ -127,7 +122,8 @@ video {
 <script>
 
 let html5QrcodeScanner = null;
-let torchOn = false;
+let lastDetected = "";
+let detectionCount = 0;
 
 const scanResultInput = document.getElementById("scanResult");
 const statusMessage = document.getElementById("statusMessage");
@@ -136,9 +132,15 @@ function setStatus(message) {
   statusMessage.innerText = message;
 }
 
+/* =========================
+   🚨 DO SAFE: NO CLEANING
+========================= */
 function sendToAppsScript(value) {
 
-  const raw = value.toString().trim();
+  const raw = value.toString().trim(); // 🔥 DO NOT MODIFY
+
+  lastDetected = "";
+  detectionCount = 0;
 
   scanResultInput.value = raw;
 
@@ -149,7 +151,7 @@ function sendToAppsScript(value) {
 
   window.opener.postMessage({
     type: "barcode",
-    value: raw
+    value: raw   // 🔥 SEND EXACT VALUE INCLUDING /1
   }, "*");
 
   setStatus("Sent: " + raw);
@@ -167,66 +169,39 @@ async function startScanner() {
 
   try {
 
-    const cameras = await Html5Qrcode.getCameras();
-
-    if (!cameras || cameras.length === 0) {
-      setStatus("No camera found");
-      return;
-    }
-
-    const backCamera =
-      cameras.find(c => c.label.toLowerCase().includes("back")) ||
-      cameras[0];
-
     await html5QrcodeScanner.start(
 
-      backCamera.id,
+      { facingMode: "environment" },
 
       {
         fps: 5,
-
-        qrbox: function(viewfinderWidth, viewfinderHeight) {
-          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          return {
-            width: Math.floor(minEdge * 0.65),
-            height: Math.floor(minEdge * 0.65)
-          };
-        },
-
-        aspectRatio: 1.0,
-        disableFlip: true
+        qrbox: { width: 350, height: 180 }
       },
 
       (decodedText) => {
 
-  const raw = decodedText.toString().trim();
+        const raw = decodedText.toString().trim();
 
-  console.log("Raw barcode:", raw);
+        console.log("Raw barcode:", raw);
 
-  if (!raw) return;
+        if (raw === lastDetected) {
+          detectionCount++;
+        } else {
+          lastDetected = raw;
+          detectionCount = 1;
+        }
 
-  if (raw === lastDetected) {
-    detectionCount++;
-  } else {
-    lastDetected = raw;
-    detectionCount = 1;
-  }
+        setStatus(`Confirming scan (${detectionCount}/2)`);
 
-  setStatus(`Confirming scan (${detectionCount}/2)`);
+        if (detectionCount >= 2) {
 
-  // only trigger once confirmed
-  if (detectionCount >= 2) {
+          setStatus("Barcode confirmed");
 
-    setStatus("Barcode confirmed");
+          sendToAppsScript(raw);
 
-    sendToAppsScript(raw);
+          stopScanner();
+        }
 
-    stopScanner();
-  }
-},
-
-      (errorMessage) => {
-        // silent
       }
 
     );
@@ -236,7 +211,7 @@ async function startScanner() {
 
     setStatus("Scanning...");
 
-  } catch (err) {
+  } catch(err) {
     console.error(err);
     setStatus("Camera failed");
   }
@@ -249,7 +224,7 @@ async function stopScanner() {
   try {
     await html5QrcodeScanner.stop();
     await html5QrcodeScanner.clear();
-  } catch (e) {}
+  } catch(e) {}
 
   html5QrcodeScanner = null;
 
@@ -259,42 +234,9 @@ async function stopScanner() {
   setStatus("Stopped");
 }
 
-async function toggleFlash() {
-
-  if (!html5QrcodeScanner) {
-    setStatus("Scanner not running");
-    return;
-  }
-
-  try {
-
-    const track = html5QrcodeScanner.getRunningTrack?.();
-
-    if (!track) {
-      setStatus("Flash not available");
-      return;
-    }
-
-    const capabilities = track.getCapabilities?.();
-
-    if (!capabilities || !capabilities.torch) {
-      setStatus("Flash not supported");
-      return;
-    }
-
-    torchOn = !torchOn;
-
-    await track.applyConstraints({
-      advanced: [{ torch: torchOn }]
-    });
-
-    setStatus(torchOn ? "Flash ON" : "Flash OFF");
-
-  } catch (err) {
-    console.error(err);
-    setStatus("Flash failed");
-  }
-}
+/* =========================
+   OCR MODE (UNCHANGED)
+========================= */
 
 async function runOCR() {
 
@@ -311,17 +253,18 @@ async function runOCR() {
 
     const canvas = document.createElement("canvas");
 
-    canvas.width = video.videoWidth * 2;
-    canvas.height = video.videoHeight * 2;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
     const ctx = canvas.getContext("2d");
+
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const image = canvas.toDataURL("image/png");
 
     const result = await Tesseract.recognize(image, 'eng');
 
-    const text = result.data.text || "";
+    const text = result.data.text;
 
     const cleanedText = text
       .toUpperCase()
@@ -339,20 +282,27 @@ async function runOCR() {
       return;
     }
 
-    sendToAppsScript(match[0].trim());
+    sendToAppsScript(match[0]);
 
     setStatus("Order detected");
 
-  } catch (err) {
+  } catch(err) {
     console.error(err);
     setStatus("OCR failed");
   }
 }
 
+/* =========================
+   BUTTONS
+========================= */
+
 document.getElementById("startScanBtn").addEventListener("click", startScanner);
 document.getElementById("stopScanBtn").addEventListener("click", stopScanner);
 document.getElementById("ocrBtn").addEventListener("click", runOCR);
-document.getElementById("flashBtn").addEventListener("click", toggleFlash);
+
+/* =========================
+   AUTO START
+========================= */
 
 startScanner();
 
