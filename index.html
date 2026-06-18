@@ -199,15 +199,31 @@ async function startScanner() {
 
       (decodedText) => {
 
-        const raw = decodedText.toString().trim();
+  const raw = decodedText.toString().trim();
 
-        if (!raw) return;
+  console.log("Raw barcode:", raw);
 
-        setStatus("Barcode detected");
+  if (!raw) return;
 
-        sendToAppsScript(raw);
-        stopScanner();
-      },
+  if (raw === lastDetected) {
+    detectionCount++;
+  } else {
+    lastDetected = raw;
+    detectionCount = 1;
+  }
+
+  setStatus(`Confirming scan (${detectionCount}/2)`);
+
+  // only trigger once confirmed
+  if (detectionCount >= 2) {
+
+    setStatus("Barcode confirmed");
+
+    sendToAppsScript(raw);
+
+    stopScanner();
+  }
+},
 
       (errorMessage) => {
         // silent
