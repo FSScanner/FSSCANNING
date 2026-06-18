@@ -277,7 +277,7 @@ async function runOCR() {
 
     // ✅ ALLOW / IN MATCHING
     const match = cleanedText.match(
-      /\b(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9\/-]*\b/
+      /\b(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9\/_-]*\b/
     );
 
     if (!match) {
