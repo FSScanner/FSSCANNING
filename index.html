@@ -56,7 +56,7 @@ h2 {
 button {
   flex: 1;
   padding: 16px;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: bold;
   border: none;
   border-radius: 8px;
@@ -66,15 +66,16 @@ button {
 #startScanBtn { background: #fbbf00; color: black; }
 #stopScanBtn { background: #cc0000; color: white; }
 #ocrBtn { background: #0099ff; color: white; }
+#flashBtn { background: #ffaa00; color: black; }
 
 #reader {
   position: fixed;
-  top: 170px;
+  top: 220px;
   left: 0;
   right: 0;
   bottom: 0;
   width: 100vw;
-  height: calc(100vh - 170px);
+  height: calc(100vh - 220px);
   overflow: hidden;
 }
 
@@ -110,7 +111,11 @@ video {
   <div class="buttonRow">
     <button id="startScanBtn">Start</button>
     <button id="stopScanBtn" disabled>Stop</button>
+  </div>
+
+  <div class="buttonRow">
     <button id="ocrBtn">SCAN TEXT</button>
+    <button id="flashBtn">FLASH</button>
   </div>
 
 </div>
@@ -124,6 +129,7 @@ video {
 let html5QrcodeScanner = null;
 let lastDetected = "";
 let detectionCount = 0;
+let torchOn = false;
 
 const scanResultInput = document.getElementById("scanResult");
 const statusMessage = document.getElementById("statusMessage");
@@ -132,12 +138,9 @@ function setStatus(message) {
   statusMessage.innerText = message;
 }
 
-/* =========================
-   🚨 DO SAFE: NO CLEANING
-========================= */
 function sendToAppsScript(value) {
 
-  const raw = value.toString().trim(); // 🔥 DO NOT MODIFY
+  const raw = value.toString().trim();
 
   lastDetected = "";
   detectionCount = 0;
@@ -151,7 +154,7 @@ function sendToAppsScript(value) {
 
   window.opener.postMessage({
     type: "barcode",
-    value: raw   // 🔥 SEND EXACT VALUE INCLUDING /1
+    value: raw
   }, "*");
 
   setStatus("Sent: " + raw);
@@ -171,11 +174,15 @@ async function startScanner() {
 
     await html5QrcodeScanner.start(
 
-      { facingMode: "environment" },
+      {
+        facingMode: "environment",
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
 
       {
-        fps: 5,
-        qrbox: { width: 350, height: 180 }
+        fps: 10,
+        qrbox: { width: 300, height: 140 }
       },
 
       (decodedText) => {
@@ -234,9 +241,41 @@ async function stopScanner() {
   setStatus("Stopped");
 }
 
-/* =========================
-   OCR MODE (UNCHANGED)
-========================= */
+async function toggleFlash() {
+
+  if (!html5QrcodeScanner) {
+    setStatus("Scanner not running");
+    return;
+  }
+
+  try {
+    const track = html5QrcodeScanner.getRunningTrack();
+
+    if (!track) {
+      setStatus("No camera track");
+      return;
+    }
+
+    const capabilities = track.getCapabilities();
+
+    if (!capabilities.torch) {
+      setStatus("Flash not supported");
+      return;
+    }
+
+    torchOn = !torchOn;
+
+    await track.applyConstraints({
+      advanced: [{ torch: torchOn }]
+    });
+
+    setStatus(torchOn ? "Flash ON" : "Flash OFF");
+
+  } catch (err) {
+    console.error(err);
+    setStatus("Flash failed");
+  }
+}
 
 async function runOCR() {
 
@@ -252,12 +291,28 @@ async function runOCR() {
     }
 
     const canvas = document.createElement("canvas");
+    const scale = 2;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = video.videoWidth * scale;
+    canvas.height = video.videoHeight * scale;
 
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+
+      const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      const contrast = avg > 140 ? 255 : 0;
+
+      data[i] = contrast;
+      data[i + 1] = contrast;
+      data[i + 2] = contrast;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
 
     const image = canvas.toDataURL("image/png");
 
@@ -265,7 +320,6 @@ async function runOCR() {
 
     const text = result.data.text || "";
 
-    // ✅ KEEP STRUCTURE (DO NOT REMOVE /)
     const cleanedText = text
       .toUpperCase()
       .replace(/\r/g, ' ')
@@ -275,7 +329,6 @@ async function runOCR() {
     console.log("OCR RAW:", text);
     console.log("OCR CLEAN:", cleanedText);
 
-    // ✅ ALLOW / IN MATCHING
     const match = cleanedText.match(
       /\b(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9\/_-]*\b/
     );
@@ -298,17 +351,10 @@ async function runOCR() {
   }
 }
 
-/* =========================
-   BUTTONS
-========================= */
-
 document.getElementById("startScanBtn").addEventListener("click", startScanner);
 document.getElementById("stopScanBtn").addEventListener("click", stopScanner);
 document.getElementById("ocrBtn").addEventListener("click", runOCR);
-
-/* =========================
-   AUTO START
-========================= */
+document.getElementById("flashBtn").addEventListener("click", toggleFlash);
 
 startScanner();
 
