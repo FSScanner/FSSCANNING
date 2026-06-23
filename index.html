@@ -266,24 +266,29 @@ async function runOCR() {
 
     const text = result.data.text;
 
-    const normalized = cleanedText
-      .replace(/O/g, '0')
-      .replace(/I/g, '1')
-      .replace(/B/g, '8');
+const cleanedText = text
+  .toUpperCase()
+  .replace(/\r/g, ' ')
+  .replace(/\n/g, ' ')
+  .replace(/\s+/g, ' ');
 
-    const match = cleanedText.match(
-      /(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9\/_-]+/
-    );
+const normalized = cleanedText
+  .replace(/O/g, '0')
+  .replace(/I/g, '1')
+  .replace(/B/g, '8');
 
-    if (!match) {
-      setStatus("No valid order found");
-      alert("No valid order number detected");
-      return;
-    }
+const match = normalized.match(
+  /\b(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9\/_-]*\b/
+);
 
-    sendToAppsScript(match[0]);
+if (!match) {
+  setStatus("No valid order found");
+  alert("No valid order number detected");
+  return;
+}
 
-    setStatus("Order detected");
+sendToAppsScript(match[0]);
+setStatus("Order detected");
 
   } catch(err) {
     console.error(err);
