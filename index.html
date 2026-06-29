@@ -132,12 +132,9 @@ function setStatus(message) {
   statusMessage.innerText = message;
 }
 
-/* =========================
-   🚨 DO SAFE: NO CLEANING
-========================= */
 function sendToAppsScript(value) {
 
-  const raw = value.toString().trim(); // 🔥 DO NOT MODIFY
+  const raw = value.toString().trim();
 
   lastDetected = "";
   detectionCount = 0;
@@ -151,7 +148,7 @@ function sendToAppsScript(value) {
 
   window.opener.postMessage({
     type: "barcode",
-    value: raw   // 🔥 SEND EXACT VALUE INCLUDING /1
+    value: raw
   }, "*");
 
   setStatus("Sent: " + raw);
@@ -171,11 +168,28 @@ async function startScanner() {
 
     await html5QrcodeScanner.start(
 
-      { facingMode: "environment"},
+      {
+        facingMode: "environment",
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
 
       {
-        fps: 10,
-        qrbox: { width: 500, height: 250 }
+        fps: 5,
+        qrbox: function(viewfinderWidth, viewfinderHeight) {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const width = Math.floor(minEdge * 0.85);
+
+          return {
+            width: width,
+            height: Math.floor(width * 0.45)
+          };
+        },
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ]
       },
 
       (decodedText) => {
@@ -191,9 +205,9 @@ async function startScanner() {
           detectionCount = 1;
         }
 
-        setStatus(`Confirming scan (${detectionCount}/2)`);
+        setStatus(`Confirming scan (${detectionCount}/1)`);
 
-        if (detectionCount >= 2) {
+        if (detectionCount >= 1) {
 
           setStatus("Barcode confirmed");
 
@@ -209,7 +223,7 @@ async function startScanner() {
     document.getElementById("startScanBtn").disabled = true;
     document.getElementById("stopScanBtn").disabled = false;
 
-    setStatus("Scanning...");
+    setStatus("Scanning... Hold steady and fill the box");
 
   } catch(err) {
     console.error(err);
@@ -234,10 +248,6 @@ async function stopScanner() {
   setStatus("Stopped");
 }
 
-/* =========================
-   OCR MODE (UNCHANGED)
-========================= */
-
 async function runOCR() {
 
   setStatus("Reading text...");
@@ -258,6 +268,7 @@ async function runOCR() {
 
     const ctx = canvas.getContext("2d");
 
+    ctx.filter = "grayscale(100%) contrast(200%) brightness(120%)";
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const image = canvas.toDataURL("image/png");
@@ -266,29 +277,29 @@ async function runOCR() {
 
     const text = result.data.text;
 
-const cleanedText = text
-  .toUpperCase()
-  .replace(/\r/g, ' ')
-  .replace(/\n/g, ' ')
-  .replace(/\s+/g, ' ');
+    const cleanedText = text
+      .toUpperCase()
+      .replace(/\r/g, ' ')
+      .replace(/\n/g, ' ')
+      .replace(/\s+/g, ' ');
 
-const normalized = cleanedText
-  .replace(/O/g, '0')
-  .replace(/I/g, '1')
-  .replace(/B/g, '8');
+    const normalized = cleanedText
+      .replace(/O/g, '0')
+      .replace(/I/g, '1')
+      .replace(/B/g, '8');
 
-const match = normalized.match(
-  /\b(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9\/_-]*\b/
-);
+    const match = normalized.match(
+      /\b(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9\/_-]*\b/
+    );
 
-if (!match) {
-  setStatus("No valid order found");
-  alert("No valid order number detected");
-  return;
-}
+    if (!match) {
+      setStatus("No valid order found");
+      alert("No valid order number detected");
+      return;
+    }
 
-sendToAppsScript(match[0]);
-setStatus("Order detected");
+    sendToAppsScript(match[0]);
+    setStatus("Order detected");
 
   } catch(err) {
     console.error(err);
@@ -296,17 +307,9 @@ setStatus("Order detected");
   }
 }
 
-/* =========================
-   BUTTONS
-========================= */
-
 document.getElementById("startScanBtn").addEventListener("click", startScanner);
 document.getElementById("stopScanBtn").addEventListener("click", stopScanner);
 document.getElementById("ocrBtn").addEventListener("click", runOCR);
-
-/* =========================
-   AUTO START
-========================= */
 
 startScanner();
 
