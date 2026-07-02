@@ -6,7 +6,7 @@
 
 <title>FS Scanner</title>
 
-<script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://unpkg.com/@zxing/browser@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style>
@@ -78,6 +78,21 @@ button {
   overflow: hidden;
 }
 
+  #reader {
+  position: relative;
+}
+
+#reader::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background: red;
+  opacity: 0.6;
+}
+
 video {
   object-fit: cover !important;
 }
@@ -121,9 +136,9 @@ video {
 
 <script>
 
-let html5QrcodeScanner = null;
-let lastDetected = "";
-let detectionCount = 0;
+let codeReader = null;
+let selectedDeviceId = null;
+let scanning = false;
 
 const scanResultInput = document.getElementById("scanResult");
 const statusMessage = document.getElementById("statusMessage");
@@ -135,9 +150,6 @@ function setStatus(message) {
 function sendToAppsScript(value) {
 
   const raw = value.toString().trim();
-
-  lastDetected = "";
-  detectionCount = 0;
 
   scanResultInput.value = raw;
 
@@ -153,96 +165,82 @@ function sendToAppsScript(value) {
 
   setStatus("Sent: " + raw);
 
-  setTimeout(() => {
-    window.close();
-  }, 300);
+  setTimeout(() => window.close(), 300);
 }
 
 async function startScanner() {
 
-  if (html5QrcodeScanner) return;
-
-  html5QrcodeScanner = new Html5Qrcode("reader");
+  if (scanning) return;
+  scanning = true;
 
   try {
+    codeReader = new ZXing.BrowserMultiFormatReader();
 
-    await html5QrcodeScanner.start(
-  { facingMode: "environment" },
+    setStatus("Starting camera...");
 
-  {
-    fps: 5,
-    qrbox: function(viewfinderWidth, viewfinderHeight) {
-      const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-      const width = Math.floor(minEdge * 0.85);
+    const videoInputDevices = await ZXing.BrowserMultiFormatReader.listVideoInputDevices();
 
-      return {
-        width: width,
-        height: Math.floor(width * 0.45)
-      };
-    },
-    formatsToSupport: [
-      Html5QrcodeSupportedFormats.CODE_128,
-      Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.QR_CODE
-    ]
-  },
+    if (!videoInputDevices.length) {
+      setStatus("No camera found");
+      return;
+    }
 
-  (decodedText) => {
+    // use back camera if available
+    selectedDeviceId = videoInputDevices[0].deviceId;
 
-        const raw = decodedText.toString().trim();
+    const rearCamera = videoInputDevices.find(device =>
+      device.label.toLowerCase().includes("back") ||
+      device.label.toLowerCase().includes("rear")
+    );
 
-        console.log("Raw barcode:", raw);
+    if (rearCamera) {
+      selectedDeviceId = rearCamera.deviceId;
+    }
 
-        if (raw === lastDetected) {
-          detectionCount++;
-        } else {
-          lastDetected = raw;
-          detectionCount = 1;
-        }
+    codeReader.decodeFromVideoDevice(
+      selectedDeviceId,
+      "reader",
+      (result, err) => {
 
-        setStatus(`Confirming scan (${detectionCount}/1)`);
+        if (result) {
+          const raw = result.getText();
 
-        if (detectionCount >= 1) {
-
-          setStatus("Barcode confirmed");
+          setStatus("Barcode detected");
 
           sendToAppsScript(raw);
 
           stopScanner();
         }
 
+        if (err && !(err instanceof ZXing.NotFoundException)) {
+          console.error(err);
+        }
       }
-
     );
 
-    document.getElementById("startScanBtn").disabled = true;
-    document.getElementById("stopScanBtn").disabled = false;
+    setStatus("Scanning... align barcode");
 
-    setStatus("Scanning... Hold steady and fill the box");
-
-  } catch(err) {
-  console.error("Camera start failed:", err);
-  setStatus("Camera failed: " + (err?.message || err));
-}
+  } catch (err) {
+    console.error(err);
+    setStatus("Camera failed: " + err.message);
+  }
 }
 
 async function stopScanner() {
 
-  if (!html5QrcodeScanner) return;
+  scanning = false;
 
   try {
-    await html5QrcodeScanner.stop();
-    await html5QrcodeScanner.clear();
-  } catch(e) {}
-
-  html5QrcodeScanner = null;
-
-  document.getElementById("startScanBtn").disabled = false;
-  document.getElementById("stopScanBtn").disabled = true;
+    if (codeReader) {
+      codeReader.reset();
+      codeReader = null;
+    }
+  } catch (e) {
+    console.warn(e);
+  }
 
   setStatus("Stopped");
 }
-
 async function runOCR() {
 
   setStatus("Reading text...");
@@ -293,8 +291,15 @@ async function runOCR() {
       return;
     }
 
-    sendToAppsScript(match[0]);
-    setStatus("Order detected");
+    const value = match[0].toString().trim();
+
+window.opener.postMessage({
+  type: "barcode",
+  value: value
+}, "*");
+
+setStatus("Order sent");
+setTimeout(() => window.close(), 300);
 
   } catch(err) {
     console.error(err);
