@@ -71,23 +71,10 @@ button {
   position: fixed;
   top: 170px;
   left: 0;
-  right: 0;
-  bottom: 0;
   width: 100vw;
   height: calc(100vh - 170px);
+  object-fit: cover;
   background: black;
-  overflow: hidden;
-}
-
-#reader::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 10%;
-  right: 10%;
-  height: 2px;
-  background: red;
-  opacity: 0.6;
 }
 
 video {
@@ -127,7 +114,7 @@ video {
 
 </div>
 
-<div id="reader"></div>
+<video id="reader"></video>
 
 <div id="statusMessage">Ready</div>
 
@@ -198,28 +185,20 @@ async function startScanner() {
     codeReader.decodeFromVideoDevice(
   selectedDeviceId,
   "reader",
-  {
-    width: { ideal: 1280 },
-    height: { ideal: 720 },
-    facingMode: "environment"
-  },
   (result, err) => {
 
-        if (result) {
-          const raw = result.getText();
+    if (result) {
+      const raw = result.getText();
+      setStatus("Barcode detected");
+      sendToAppsScript(raw);
+      stopScanner();
+    }
 
-          setStatus("Barcode detected");
-
-          sendToAppsScript(raw);
-
-          stopScanner();
-        }
-
-        if (err && !(err instanceof ZXing.NotFoundException)) {
-          console.error(err);
-        }
-      }
-    );
+    if (err && !(err instanceof ZXing.NotFoundException)) {
+      console.error(err);
+    }
+  }
+);
 
     setStatus("Scanning... align barcode");
 
