@@ -75,11 +75,8 @@ button {
   bottom: 0;
   width: 100vw;
   height: calc(100vh - 170px);
+  background: black;
   overflow: hidden;
-}
-
-  #reader {
-  position: relative;
 }
 
 #reader::after {
@@ -173,6 +170,8 @@ async function startScanner() {
   if (scanning) return;
   scanning = true;
 
+  document.getElementById("reader").innerHTML = "";
+
   try {
     codeReader = new ZXing.BrowserMultiFormatReader();
 
@@ -197,9 +196,14 @@ async function startScanner() {
     }
 
     codeReader.decodeFromVideoDevice(
-      selectedDeviceId,
-      "reader",
-      (result, err) => {
+  selectedDeviceId,
+  "reader",
+  {
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    facingMode: "environment"
+  },
+  (result, err) => {
 
         if (result) {
           const raw = result.getText();
