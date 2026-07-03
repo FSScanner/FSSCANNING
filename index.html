@@ -180,28 +180,31 @@ async function startScanner() {
   try {
     const hints = new Map();
 
-hints.set(
-  ZXing.DecodeHintType.POSSIBLE_FORMATS,
-  [
-    ZXing.BarcodeFormat.CODE_39,
-    ZXing.BarcodeFormat.CODE_128
-  ]
-);
+    hints.set(
+      ZXing.DecodeHintType.POSSIBLE_FORMATS,
+      [
+        ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.CODE_128
+      ]
+    );
 
-hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
 
-codeReader = new ZXing.BrowserMultiFormatReader(hints);;
+    codeReader = new ZXing.BrowserMultiFormatReader(hints);
 
     setStatus("Starting camera...");
 
     const devices = await codeReader.listVideoInputDevices();
 
+    console.log("Available cameras:", devices);
+
     if (!devices.length) {
       setStatus("No camera found");
+      scanning = false;
       return;
     }
 
-    let selectedDeviceId = devices[0].deviceId;
+    selectedDeviceId = devices[0].deviceId;
 
     const rearCamera = devices.find(device =>
       device.label.toLowerCase().includes("back") ||
@@ -210,6 +213,9 @@ codeReader = new ZXing.BrowserMultiFormatReader(hints);;
 
     if (rearCamera) {
       selectedDeviceId = rearCamera.deviceId;
+      console.log("Using rear camera:", rearCamera.label);
+    } else {
+      console.log("Using default camera:", devices[0].label);
     }
 
     const videoElement = document.getElementById("reader");
@@ -220,26 +226,60 @@ codeReader = new ZXing.BrowserMultiFormatReader(hints);;
       (result, err) => {
 
         if (result) {
+          console.log("========== BARCODE DETECTED ==========");
+          console.log("TEXT:", result.getText());
+          console.log("FORMAT:", result.getBarcodeFormat());
+          console.log(result);
+
           const raw = result.getText();
           setStatus("Barcode detected");
           sendToAppsScript(raw);
           stopScanner();
+          return;
         }
 
         if (err && !(err instanceof ZXing.NotFoundException)) {
-          console.error(err);
+          console.log("Decode error:", err);
         }
       }
     );
 
     setStatus("Scanning... align barcode");
 
+    setTimeout(() => {
+      try {
+        const video = document.getElementById("reader");
+        const stream = video.srcObject;
+
+        if (!stream) {
+          console.log("No video stream found");
+          return;
+        }
+
+        const track = stream.getVideoTracks()[0];
+
+        if (!track) {
+          console.log("No video track found");
+          return;
+        }
+
+        console.log("Track settings:", track.getSettings());
+
+        if (track.getCapabilities) {
+          console.log("Track capabilities:", track.getCapabilities());
+        }
+
+      } catch (e) {
+        console.log("Capability check failed:", e);
+      }
+    }, 2000);
+
   } catch (err) {
     console.error(err);
     setStatus("Camera failed: " + err.message);
+    scanning = false;
   }
 }
-
 async function stopScanner() {
 
   scanning = false;
