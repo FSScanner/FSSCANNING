@@ -3,10 +3,8 @@
 <head>
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FS OCR Scanner</title>
 
-<title>FS Scanner</title>
-
-<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style>
@@ -63,12 +61,12 @@ button {
   cursor: pointer;
 }
 
-#startScanBtn { background: #fbbf00; color: black; }
-#stopScanBtn { background: #cc0000; color: white; }
 #ocrBtn { background: #0099ff; color: white; }
 
 video {
   object-fit: cover !important;
+  width: 100%;
+  height: 100%;
 }
 
 #readerContainer {
@@ -78,12 +76,6 @@ video {
   width: 100vw;
   height: calc(100vh - 170px);
   background: black;
-}
-
-#reader {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 #scanGuide {
@@ -119,42 +111,59 @@ video {
 
 <div id="topBar">
 
-  <h2>FS Scanner</h2>
+  <h2>FS OCR Scanner</h2>
 
-  <input type="text" id="scanResult" placeholder="Scanned result">
+  <input type="text" id="scanResult" placeholder="Detected result">
 
   <div class="buttonRow">
-    <button id="startScanBtn">Start</button>
-    <button id="stopScanBtn" disabled>Stop</button>
     <button id="ocrBtn">Scan Text</button>
   </div>
 
 </div>
 
 <div id="readerContainer">
-  <video id="reader"></video>
+  <video id="reader" autoplay playsinline></video>
   <div id="scanGuide"></div>
 </div>
 
-<div id="statusMessage">Ready</div>
+<div id="statusMessage">Starting camera...</div>
 
 <script>
 
-let codeReader = null;
-let selectedDeviceId = null;
-let scanning = false;
+let stream = null;
 
 const scanResultInput = document.getElementById("scanResult");
 const statusMessage = document.getElementById("statusMessage");
 
-function setStatus(message) {
-  statusMessage.innerText = message;
+function setStatus(msg) {
+  statusMessage.innerText = msg;
 }
 
-function sendToAppsScript(value) {
+async function startCamera() {
+
+  try {
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "environment"
+      },
+      audio: false
+    });
+
+    const video = document.getElementById("reader");
+    video.srcObject = stream;
+
+    setStatus("Camera ready - align label and tap Scan Text");
+
+  } catch (err) {
+    console.error(err);
+    setStatus("Camera failed: " + err.message);
+  }
+}
+
+function sendToParent(value) {
 
   const raw = value.toString().trim();
-
   scanResultInput.value = raw;
 
   if (!window.opener) {
@@ -168,169 +177,45 @@ function sendToAppsScript(value) {
   }, "*");
 
   setStatus("Sent: " + raw);
-
   setTimeout(() => window.close(), 300);
 }
 
-async function startScanner() {
-
-  if (scanning) return;
-  scanning = true;
-
-  try {
-    const hints = new Map();
-
-    hints.set(
-      ZXing.DecodeHintType.POSSIBLE_FORMATS,
-      [
-        ZXing.BarcodeFormat.CODE_39,
-        ZXing.BarcodeFormat.CODE_128
-      ]
-    );
-
-    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-
-    codeReader = new ZXing.BrowserMultiFormatReader(hints);
-
-    setStatus("Starting camera...");
-
-    const devices = await codeReader.listVideoInputDevices();
-
-    console.log("Available cameras:", devices);
-
-    if (!devices.length) {
-      setStatus("No camera found");
-      scanning = false;
-      return;
-    }
-
-    selectedDeviceId = devices[0].deviceId;
-
-    const rearCamera = devices.find(device =>
-      device.label.toLowerCase().includes("back") ||
-      device.label.toLowerCase().includes("rear")
-    );
-
-    if (rearCamera) {
-      selectedDeviceId = rearCamera.deviceId;
-      console.log("Using rear camera:", rearCamera.label);
-    } else {
-      console.log("Using default camera:", devices[0].label);
-    }
-
-    const videoElement = document.getElementById("reader");
-
-    codeReader.decodeFromVideoDevice(
-      selectedDeviceId,
-      videoElement,
-      (result, err) => {
-
-        if (result) {
-          console.log("========== BARCODE DETECTED ==========");
-          console.log("TEXT:", result.getText());
-          console.log("FORMAT:", result.getBarcodeFormat());
-          console.log(result);
-
-          const raw = result.getText();
-          setStatus("Barcode detected");
-          sendToAppsScript(raw);
-          stopScanner();
-          return;
-        }
-
-        if (err && !(err instanceof ZXing.NotFoundException)) {
-          console.log("Decode error:", err);
-        }
-      }
-    );
-
-    setStatus("Scanning... align barcode");
-
-    setTimeout(() => {
-      try {
-        const video = document.getElementById("reader");
-        const stream = video.srcObject;
-
-        if (!stream) {
-          console.log("No video stream found");
-          return;
-        }
-
-        const track = stream.getVideoTracks()[0];
-
-        if (!track) {
-          console.log("No video track found");
-          return;
-        }
-
-        console.log("Track settings:", track.getSettings());
-
-        if (track.getCapabilities) {
-          console.log("Track capabilities:", track.getCapabilities());
-        }
-
-      } catch (e) {
-        console.log("Capability check failed:", e);
-      }
-    }, 2000);
-
-  } catch (err) {
-    console.error(err);
-    setStatus("Camera failed: " + err.message);
-    scanning = false;
-  }
-}
-async function stopScanner() {
-
-  scanning = false;
-
-  try {
-    if (codeReader) {
-      codeReader.reset();
-      codeReader = null;
-    }
-  } catch (e) {
-    console.warn(e);
-  }
-
-  setStatus("Stopped");
-}
 async function runOCR() {
 
   setStatus("Reading text...");
 
   try {
 
-    const video = document.querySelector("video");
+    const video = document.getElementById("reader");
 
-    if (!video) {
-      alert("Camera not running");
+    if (!video.videoWidth) {
+      setStatus("Camera not ready");
       return;
     }
 
     const canvas = document.createElement("canvas");
-
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
     const ctx = canvas.getContext("2d");
 
+    // Slight enhancement for OCR
     ctx.filter = "grayscale(100%) contrast(200%) brightness(120%)";
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const image = canvas.toDataURL("image/png");
 
-    const result = await Tesseract.recognize(image, 'eng');
+    const result = await Tesseract.recognize(image, "eng");
 
-    const text = result.data.text;
+    let text = result.data.text;
 
-    const cleanedText = text
+    const cleaned = text
       .toUpperCase()
       .replace(/\r/g, ' ')
       .replace(/\n/g, ' ')
       .replace(/\s+/g, ' ');
 
-    const normalized = cleanedText
+    const normalized = cleaned
       .replace(/O/g, '0')
       .replace(/I/g, '1')
       .replace(/B/g, '8');
@@ -345,27 +230,17 @@ async function runOCR() {
       return;
     }
 
-    const value = match[0].toString().trim();
+    sendToParent(match[0]);
 
-window.opener.postMessage({
-  type: "barcode",
-  value: value
-}, "*");
-
-setStatus("Order sent");
-setTimeout(() => window.close(), 300);
-
-  } catch(err) {
+  } catch (err) {
     console.error(err);
     setStatus("OCR failed");
   }
 }
 
-document.getElementById("startScanBtn").addEventListener("click", startScanner);
-document.getElementById("stopScanBtn").addEventListener("click", stopScanner);
 document.getElementById("ocrBtn").addEventListener("click", runOCR);
 
-startScanner();
+startCamera();
 
 </script>
 
