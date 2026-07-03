@@ -210,19 +210,20 @@ async function runOCR() {
     let text = result.data.text;
 
     const cleaned = text
-      .toUpperCase()
-      .replace(/\r/g, ' ')
-      .replace(/\n/g, ' ')
-      .replace(/\s+/g, ' ');
+  .toUpperCase()
+  .replace(/[^A-Z0-9\/_-]/g, '')   // 🔥 kill ALL spaces + junk first
+  .replace(/O/g, '0')
+  .replace(/I/g, '1')
+  .replace(/B/g, '8');
 
     const normalized = cleaned
       .replace(/O/g, '0')
       .replace(/I/g, '1')
       .replace(/B/g, '8');
 
-    const match = normalized.match(
-      /\b(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9\/_-]*\b/
-    );
+    const match = cleaned.match(
+  /(G9|M9|W9|FS8|SG8|SW8|T9)[A-Z0-9\/_-]{3,}/
+);
 
     if (!match) {
       setStatus("No valid order found");
