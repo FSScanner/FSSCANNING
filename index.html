@@ -67,18 +67,35 @@ button {
 #stopScanBtn { background: #cc0000; color: white; }
 #ocrBtn { background: #0099ff; color: white; }
 
-#reader {
+video {
+  object-fit: cover !important;
+}
+
+#readerContainer {
   position: fixed;
   top: 170px;
   left: 0;
   width: 100vw;
   height: calc(100vh - 170px);
-  object-fit: cover;
   background: black;
 }
 
-video {
-  object-fit: cover !important;
+#reader {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#scanGuide {
+  position: absolute;
+  left: 10%;
+  top: 40%;
+  width: 80%;
+  height: 20%;
+  border: 3px solid #fbbf00;
+  border-radius: 8px;
+  box-shadow: 0 0 15px rgba(251,191,0,0.8);
+  pointer-events: none;
 }
 
 #statusMessage {
@@ -114,7 +131,10 @@ video {
 
 </div>
 
-<video id="reader"></video>
+<div id="readerContainer">
+  <video id="reader"></video>
+  <div id="scanGuide"></div>
+</div>
 
 <div id="statusMessage">Ready</div>
 
@@ -158,7 +178,19 @@ async function startScanner() {
   scanning = true;
 
   try {
-    codeReader = new ZXing.BrowserMultiFormatReader();
+    const hints = new Map();
+
+hints.set(
+  ZXing.DecodeHintType.POSSIBLE_FORMATS,
+  [
+    ZXing.BarcodeFormat.CODE_39,
+    ZXing.BarcodeFormat.CODE_128
+  ]
+);
+
+hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+codeReader = new ZXing.BrowserMultiFormatReader(hints);;
 
     setStatus("Starting camera...");
 
