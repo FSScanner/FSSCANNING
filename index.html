@@ -231,9 +231,7 @@ async function runOCR() {
       .replace(/O/g, '0')
       .replace(/I/g, '1')
       .replace(/B/g, '8')
-      .replace(/S/g, '5')
-      .replace(/Z/g, '2')
-      .replace(/G/g, '6');                // Common OCR confusions
+      .replace(/Z/g, '2');                // Common OCR confusions
 
     console.log("Cleaned:", JSON.stringify(cleaned));
 
