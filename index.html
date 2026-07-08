@@ -1,221 +1,128 @@
 <!DOCTYPE html>
 <html>
 <head>
-
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FS OCR Scanner</title>
-
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-
 <style>
+  body { margin:0; padding:0; background:#111; color:white; font-family:Arial, sans-serif; overflow:hidden; }
+  #topBar {
+    position:fixed; top:0; left:0; right:0; z-index:9999;
+    background:rgba(0,0,0,0.85); padding:12px;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  h2 { margin:0; font-size:28px; text-align:center; }
+  #scanResult { width:100%; padding:14px; font-size:24px; border-radius:8px; }
+  button {
+    padding:16px; font-size:22px; font-weight:bold; border:none; border-radius:8px; cursor:pointer;
+  }
+  #ocrBtn { background:#0099ff; color:white; }
 
-body {
-  margin: 0;
-  padding: 0;
-  background: #111;
-  color: white;
-  font-family: Arial, sans-serif;
-  overflow: hidden;
-}
+  #readerContainer {
+    position:fixed; top:170px; left:0; width:100vw; height:calc(100vh - 170px); background:black;
+    overflow:hidden;
+  }
+  video { width:100%; height:100%; object-fit:cover; }
 
-#topBar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 9999;
-  background: rgba(0,0,0,0.85);
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
+  /* Resizable Scan Box */
+  #scanBox {
+    position:absolute;
+    border:3px solid #fbbf00;
+    box-shadow:0 0 15px rgba(251,191,0,0.8);
+    resize:both; overflow:hidden; /* enables native resize */
+    min-width:150px; min-height:80px;
+  }
+  #scanBox::after {
+    content:''; position:absolute; inset:0;
+    background:rgba(0,0,0,0.4); pointer-events:none; /* dark overlay outside box */
+  }
 
-h2 {
-  margin: 0;
-  font-size: 28px;
-  text-align: center;
-}
-
-#scanResult {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 14px;
-  font-size: 24px;
-  border-radius: 8px;
-  border: none;
-}
-
-.buttonRow {
-  display: flex;
-  gap: 10px;
-}
-
-button {
-  flex: 1;
-  padding: 16px;
-  font-size: 22px;
-  font-weight: bold;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-#ocrBtn { background: #0099ff; color: white; }
-
-video {
-  object-fit: cover !important;
-  width: 100%;
-  height: 100%;
-}
-
-#readerContainer {
-  position: fixed;
-  top: 170px;
-  left: 0;
-  width: 100vw;
-  height: calc(100vh - 170px);
-  background: black;
-}
-
-#scanGuide {
-  position: absolute;
-  left: 10%;
-  top: 40%;
-  width: 80%;
-  height: 20%;
-  border: 3px solid #fbbf00;
-  border-radius: 8px;
-  box-shadow: 0 0 15px rgba(251,191,0,0.8);
-  pointer-events: none;
-}
-
-#statusMessage {
-  position: fixed;
-  bottom: 10px;
-  left: 10px;
-  right: 10px;
-  z-index: 9999;
-  background: rgba(0,0,0,0.8);
-  padding: 12px;
-  border-radius: 8px;
-  text-align: center;
-  font-size: 20px;
-}
-
+  #statusMessage {
+    position:fixed; bottom:10px; left:10px; right:10px; z-index:9999;
+    background:rgba(0,0,0,0.8); padding:12px; border-radius:8px; text-align:center; font-size:20px;
+  }
 </style>
-
 </head>
-
 <body>
 
 <div id="topBar">
-
   <h2>FS OCR Scanner</h2>
-
   <input type="text" id="scanResult" placeholder="Detected result">
-
-  <div class="buttonRow">
-    <button id="ocrBtn">Scan Text</button>
-  </div>
-
+  <button id="ocrBtn">Scan Text</button>
 </div>
 
 <div id="readerContainer">
   <video id="reader" autoplay playsinline></video>
-  <div id="scanGuide"></div>
+  <div id="scanBox"></div>
 </div>
 
 <div id="statusMessage">Starting camera...</div>
 
 <script>
-
 let stream = null;
-
 const scanResultInput = document.getElementById("scanResult");
 const statusMessage = document.getElementById("statusMessage");
+const scanBox = document.getElementById("scanBox");
 
 function setStatus(msg) {
   statusMessage.innerText = msg;
 }
 
 async function startCamera() {
-
   try {
-
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "environment"
-      },
-      audio: false
-    });
-
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
     const video = document.getElementById("reader");
     video.srcObject = stream;
-
-    setStatus("Camera ready - align label and tap Scan Text");
-
+    setStatus("Camera ready - Resize/move box then tap Scan");
   } catch (err) {
     console.error(err);
     setStatus("Camera failed: " + err.message);
   }
 }
 
-function sendToParent(value) {
-
-  const raw = value.toString().trim();
-  scanResultInput.value = raw;
-
-  if (!window.opener) {
-    alert("No parent window found");
-    return;
-  }
-
-  window.opener.postMessage({
-    type: "barcode",
-    value: raw
-  }, "*");
-
-  setStatus("Sent: " + raw);
-  setTimeout(() => window.close(), 300);
+// Initialize resizable box
+function initScanBox() {
+  scanBox.style.left = "10%";
+  scanBox.style.top = "35%";
+  scanBox.style.width = "80%";
+  scanBox.style.height = "25%";
 }
 
 async function runOCR() {
   setStatus("Reading text...");
   try {
     const video = document.getElementById("reader");
-    if (!video.videoWidth || !video.videoHeight) {
-      setStatus("Camera not ready");
-      return;
-    }
+    if (!video.videoWidth) return;
+
+    const rect = scanBox.getBoundingClientRect();
+    const videoRect = video.getBoundingClientRect();
+
+    const scaleX = video.videoWidth / videoRect.width;
+    const scaleY = video.videoHeight / videoRect.height;
+
+    const cropX = Math.floor((rect.left - videoRect.left) * scaleX);
+    const cropY = Math.floor((rect.top - videoRect.top) * scaleY);
+    const cropW = Math.floor(rect.width * scaleX);
+    const cropH = Math.floor(rect.height * scaleY);
 
     const canvas = document.createElement("canvas");
+    canvas.width = cropW;
+    canvas.height = cropH;
     const ctx = canvas.getContext("2d");
 
-    // Tighter crop focused on the main order area (adjust if needed)
-    const guideX = Math.floor(video.videoWidth * 0.08);
-    const guideY = Math.floor(video.videoHeight * 0.35);
-    const guideW = Math.floor(video.videoWidth * 0.84);
-    const guideH = Math.floor(video.videoHeight * 0.28);   // slightly taller
-
-    canvas.width = guideW;
-    canvas.height = guideH;
-
-    // Stronger preprocessing for labels
-    ctx.filter = "grayscale(100%) contrast(280%) brightness(110%)";
-    ctx.drawImage(video, guideX, guideY, guideW, guideH, 0, 0, guideW, guideH);
+    ctx.filter = "grayscale(100%) contrast(260%) brightness(115%)";
+    ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
     const imageDataUrl = canvas.toDataURL("image/png");
 
     const result = await Tesseract.recognize(imageDataUrl, "eng", {
-      tessedit_pageseg_mode: "7",           // Single text line mode (better for labels)
-      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-M",
+      tessedit_pageseg_mode: "7",
+      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-",
     });
 
     let text = result.data.text.trim();
     console.log("Raw OCR:", JSON.stringify(text));
 
-    // Clean
     let cleaned = text
       .toUpperCase()
       .replace(/[^A-Z0-9\/._-]/g, '')
@@ -227,39 +134,37 @@ async function runOCR() {
 
     console.log("Cleaned:", JSON.stringify(cleaned));
 
-    // Prioritize clean order numbers (M900..., G900..., etc.)
-    const orderRegex = /(M900|G900|W900|FS801|SG801|SW801|T900)[A-Z0-9\/._-]{4,}/i;
-    let match = cleaned.match(orderRegex);
+    const match = cleaned.match(/(M900|G900|W900|FS801|SG801|SW801|T900)[A-Z0-9\/._-]{4,}/i) ||
+                  cleaned.match(/[A-Z0-9\/._-]{12,}/);
 
-    // Fallback: longest sequence that looks like an order
     if (!match) {
-      const fallback = cleaned.match(/[A-Z0-9\/._-]{12,}/);
-      if (fallback) match = fallback;
-    }
-
-    if (!match || !match[0]) {
       setStatus("No valid order found");
-      alert("No clear order number detected.\n\nTry aligning better.");
+      alert("No order number detected. Try adjusting the box.");
       return;
     }
 
-    const detected = match[0];
-    console.log("✅ Detected:", detected);
-
-    sendToParent(detected);
+    sendToParent(match[0]);
 
   } catch (err) {
     console.error(err);
     setStatus("OCR failed");
-    alert("OCR Error");
   }
 }
 
+function sendToParent(value) {
+  const raw = value.toString().trim();
+  scanResultInput.value = raw;
+  if (window.opener) {
+    window.opener.postMessage({ type: "barcode", value: raw }, "*");
+  }
+  setStatus("Sent: " + raw);
+  setTimeout(() => window.close(), 400);
+}
+
+// Init
 document.getElementById("ocrBtn").addEventListener("click", runOCR);
-
 startCamera();
-
+initScanBox();
 </script>
-
 </body>
 </html>
