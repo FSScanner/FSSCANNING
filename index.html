@@ -181,61 +181,90 @@ function sendToParent(value) {
 }
 
 async function runOCR() {
-
   setStatus("Reading text...");
-
   try {
-
     const video = document.getElementById("reader");
-
-    if (!video.videoWidth) {
+    if (!video.videoWidth || !video.videoHeight) {
       setStatus("Camera not ready");
       return;
     }
 
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
     const ctx = canvas.getContext("2d");
 
-    // Slight enhancement for OCR
-    ctx.filter = "grayscale(100%) contrast(200%) brightness(120%)";
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // === CROP TO SCAN GUIDE (very important) ===
+    const guideX = Math.floor(video.videoWidth * 0.10);
+    const guideY = Math.floor(video.videoHeight * 0.40);
+    const guideW = Math.floor(video.videoWidth * 0.80);
+    const guideH = Math.floor(video.videoHeight * 0.20);
 
-    const image = canvas.toDataURL("image/png");
+    canvas.width = guideW;
+    canvas.height = guideH;
 
-    const result = await Tesseract.recognize(image, "eng");
+    // Strong preprocessing for OCR
+    ctx.filter = "grayscale(100%) contrast(240%) brightness(125%)";
+    ctx.drawImage(
+      video,
+      guideX, guideY, guideW, guideH,   // source rectangle
+      0, 0, guideW, guideH               // destination
+    );
 
-    let text = result.data.text;
+    const imageDataUrl = canvas.toDataURL("image/png");
 
-    const cleaned = text
-  .toUpperCase()
-  .replace(/[^A-Z0-9\/_-]/g, '')   // 🔥 kill ALL spaces + junk first
-  .replace(/O/g, '0')
-  .replace(/I/g, '1')
-  .replace(/B/g, '8');
+    // === Run Tesseract with better settings ===
+    const result = await Tesseract.recognize(imageDataUrl, "eng", {
+      tessedit_pageseg_mode: "6",           // Single uniform block of text
+      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-",
+      // logger: m => console.log(m)        // Uncomment to see progress
+    });
 
-    const normalized = cleaned
+    let text = result.data.text.trim();
+    
+    // === DEBUG - Remove after testing ===
+    console.log("Raw OCR:", JSON.stringify(text));
+    console.log("Confidence:", result.data.confidence);
+
+    // === Aggressive cleaning ===
+    let cleaned = text
+      .toUpperCase()
+      .replace(/[^A-Z0-9\/._-]/g, '')     // Remove everything except allowed chars
       .replace(/O/g, '0')
       .replace(/I/g, '1')
-      .replace(/B/g, '8');
+      .replace(/B/g, '8')
+      .replace(/S/g, '5')
+      .replace(/Z/g, '2')
+      .replace(/G/g, '6');                // Common OCR confusions
 
-    const match = cleaned.match(
-  /(G900|M900|W900|FS801|SG801|SW801|T900)[A-Z0-9\/_-]{3,}/
-);
+    console.log("Cleaned:", JSON.stringify(cleaned));
 
-    if (!match) {
+    // === Multiple regex patterns (more forgiving) ===
+    const patterns = [
+      /(G900|M900|W900|FS801|SG801|SW801|T900)[A-Z0-9\/._-]{3,}/i,
+      /([GMWFSST][0-9]{2,})[A-Z0-9\/._-]{4,}/i,     // More flexible prefix
+      /[A-Z0-9\/._-]{10,}/                          // Any long enough code as fallback
+    ];
+
+    let match = null;
+    for (const regex of patterns) {
+      match = cleaned.match(regex);
+      if (match) break;
+    }
+
+    if (!match || !match[0]) {
       setStatus("No valid order found");
-      alert("No valid order number detected");
+      alert("No valid order number detected.\n\nRaw text:\n" + text);
       return;
     }
 
-    sendToParent(match[0]);
+    const detected = match[0];
+    console.log("✅ Detected order:", detected);
+
+    sendToParent(detected);
 
   } catch (err) {
     console.error(err);
-    setStatus("OCR failed");
+    setStatus("OCR failed: " + err.message);
+    alert("OCR Error: " + err.message);
   }
 }
 
