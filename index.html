@@ -192,33 +192,33 @@ async function runOCR() {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
-    // Crop to scan guide
-    const guideX = Math.floor(video.videoWidth * 0.10);
-    const guideY = Math.floor(video.videoHeight * 0.40);
-    const guideW = Math.floor(video.videoWidth * 0.80);
-    const guideH = Math.floor(video.videoHeight * 0.20);
+    // Tighter crop focused on the main order area (adjust if needed)
+    const guideX = Math.floor(video.videoWidth * 0.08);
+    const guideY = Math.floor(video.videoHeight * 0.35);
+    const guideW = Math.floor(video.videoWidth * 0.84);
+    const guideH = Math.floor(video.videoHeight * 0.28);   // slightly taller
 
     canvas.width = guideW;
     canvas.height = guideH;
 
-    ctx.filter = "grayscale(100%) contrast(240%) brightness(125%)";
+    // Stronger preprocessing for labels
+    ctx.filter = "grayscale(100%) contrast(280%) brightness(110%)";
     ctx.drawImage(video, guideX, guideY, guideW, guideH, 0, 0, guideW, guideH);
 
     const imageDataUrl = canvas.toDataURL("image/png");
 
     const result = await Tesseract.recognize(imageDataUrl, "eng", {
-      tessedit_pageseg_mode: "6",
-      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-",
+      tessedit_pageseg_mode: "7",           // Single text line mode (better for labels)
+      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-M",
     });
 
     let text = result.data.text.trim();
     console.log("Raw OCR:", JSON.stringify(text));
-    console.log("Confidence:", result.data.confidence);
 
-    // === FIXED CLEANING - hyphen is now safely at the end ===
+    // Clean
     let cleaned = text
       .toUpperCase()
-      .replace(/[^A-Z0-9\/._-]/g, '')   // hyphen safely at the end
+      .replace(/[^A-Z0-9\/._-]/g, '')
       .replace(/O/g, '0')
       .replace(/I/g, '1')
       .replace(/B/g, '8')
@@ -227,33 +227,31 @@ async function runOCR() {
 
     console.log("Cleaned:", JSON.stringify(cleaned));
 
-    // === Matching - now properly supports - and _ ===
-    const patterns = [
-      /(G900|M900|W900|FS801|SG801|SW801|T900)[A-Z0-9\/._-]{3,}/i,
-      /[A-Z0-9\/._-]{10,}/
-    ];
+    // Prioritize clean order numbers (M900..., G900..., etc.)
+    const orderRegex = /(M900|G900|W900|FS801|SG801|SW801|T900)[A-Z0-9\/._-]{4,}/i;
+    let match = cleaned.match(orderRegex);
 
-    let match = null;
-    for (const regex of patterns) {
-      match = cleaned.match(regex);
-      if (match) break;
+    // Fallback: longest sequence that looks like an order
+    if (!match) {
+      const fallback = cleaned.match(/[A-Z0-9\/._-]{12,}/);
+      if (fallback) match = fallback;
     }
 
     if (!match || !match[0]) {
       setStatus("No valid order found");
-      alert("No valid order number detected.\n\nRaw text:\n" + text);
+      alert("No clear order number detected.\n\nTry aligning better.");
       return;
     }
 
     const detected = match[0];
-    console.log("✅ Detected order:", detected);
+    console.log("✅ Detected:", detected);
 
     sendToParent(detected);
 
   } catch (err) {
     console.error(err);
-    setStatus("OCR failed: " + err.message);
-    alert("OCR Error: " + err.message);
+    setStatus("OCR failed");
+    alert("OCR Error");
   }
 }
 
