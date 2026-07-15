@@ -23,20 +23,19 @@
   }
   video { width:100%; height:100%; object-fit:cover; }
 
-  /* Full overlay with transparent scan window */
+  /* Overlay with transparent center */
   #overlay {
     position:absolute; inset:0; z-index:100;
-    background:rgba(0,0,0,0.75);
+    background:rgba(0,0,0,0.65); /* outside darkness */
     pointer-events:none;
   }
   #scanWindow {
     position:absolute;
-    border:3px solid #fbbf00;
-    box-shadow:0 0 0 9999px rgba(0,0,0,0.75);
+    border:4px solid #fbbf00;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.65); /* dark outside only */
+    background: transparent;
     box-sizing:border-box;
-    min-width:180px; min-height:90px;
-    resize: both; /* fallback */
-    overflow:hidden;
+    min-width:180px; min-height:100px;
   }
 
   #statusMessage {
@@ -74,9 +73,8 @@ async function startCamera() {
       video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
     });
     video.srcObject = stream;
-    video.onloadedmetadata = () => setStatus("Camera ready - Drag/resize yellow box over label, then tap Scan");
+    video.onloadedmetadata = () => setStatus("Camera ready - Drag/resize yellow box over label then tap Scan");
   } catch (err) {
-    console.error(err);
     setStatus("Camera error: " + err.message);
   }
 }
@@ -85,122 +83,124 @@ function setStatus(msg) {
   statusMessage.innerText = msg;
 }
 
-// Initialize draggable & resizable scan window
+// Draggable + Resizable
 function initScanWindow() {
-  scanWindow.style.left = "10%";
-  scanWindow.style.top = "35%";
-  scanWindow.style.width = "80%";
-  scanWindow.style.height = "28%";
+  scanWindow.style.left = "8%";
+  scanWindow.style.top = "32%";
+  scanWindow.style.width = "84%";
+  scanWindow.style.height = "32%";
 
   interact(scanWindow)
     .draggable({
       listeners: {
-        move(event) {
-          const target = event.target;
-          let x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
-          let y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
-          target.style.transform = `translate(${x}px, ${y}px)`;
-          target.setAttribute('data-x', x);
-          target.setAttribute('data-y', y);
+        move(e) {
+          let x = (parseFloat(scanWindow.getAttribute('data-x')) || 0) + e.dx;
+          let y = (parseFloat(scanWindow.getAttribute('data-y')) || 0) + e.dy;
+          scanWindow.style.transform = `translate(${x}px, ${y}px)`;
+          scanWindow.setAttribute('data-x', x);
+          scanWindow.setAttribute('data-y', y);
         }
       }
     })
     .resizable({
       edges: { left: true, right: true, bottom: true, top: true },
       listeners: {
-        move(event) {
-          let { x, y } = event.target.dataset;
-          x = (parseFloat(x) || 0) + event.deltaRect.left;
-          y = (parseFloat(y) || 0) + event.deltaRect.top;
-          Object.assign(event.target.style, {
-            width: `${event.rect.width}px`,
-            height: `${event.rect.height}px`,
+        move(e) {
+          let { x = 0, y = 0 } = scanWindow.dataset;
+          x = parseFloat(x) + e.deltaRect.left;
+          y = parseFloat(y) + e.deltaRect.top;
+          Object.assign(scanWindow.style, {
+            width: `${e.rect.width}px`,
+            height: `${e.rect.height}px`,
             transform: `translate(${x}px, ${y}px)`
           });
-          Object.assign(event.target.dataset, { x, y });
+          Object.assign(scanWindow.dataset, { x, y });
         }
       }
     });
 }
 
 async function runOCR() {
-  setStatus("Processing image...");
+  setStatus("Scanning...");
   try {
     const rect = scanWindow.getBoundingClientRect();
-    const videoRect = video.getBoundingClientRect();
+    const vRect = video.getBoundingClientRect();
 
-    const scaleX = video.videoWidth / videoRect.width;
-    const scaleY = video.videoHeight / videoRect.height;
+    const scaleX = video.videoWidth / vRect.width;
+    const scaleY = video.videoHeight / vRect.height;
 
-    const cropX = Math.floor((rect.left - videoRect.left) * scaleX);
-    const cropY = Math.floor((rect.top - videoRect.top) * scaleY);
-    const cropW = Math.floor(rect.width * scaleX);
-    const cropH = Math.floor(rect.height * scaleY);
+    const crop = {
+      x: Math.floor((rect.left - vRect.left) * scaleX),
+      y: Math.floor((rect.top - vRect.top) * scaleY),
+      w: Math.floor(rect.width * scaleX),
+      h: Math.floor(rect.height * scaleY)
+    };
 
     const canvas = document.createElement("canvas");
-    canvas.width = cropW;
-    canvas.height = cropH;
+    canvas.width = crop.w;
+    canvas.height = crop.h;
     const ctx = canvas.getContext("2d");
 
-    // Strong preprocessing for labels
-    ctx.filter = "grayscale(100%) contrast(280%) brightness(125%) sharpen(1.2)";
-    ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+    // Strong preprocessing for better OCR on labels
+    ctx.filter = "grayscale(100%) contrast(320%) brightness(135%)";
+    ctx.drawImage(video, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
 
-    const imageDataUrl = canvas.toDataURL("image/png", 0.95);
+    const imageDataUrl = canvas.toDataURL("image/png", 0.92);
 
     const result = await Tesseract.recognize(imageDataUrl, "eng", {
-      tessedit_pageseg_mode: "7",
+      tessedit_pageseg_mode: "6",           // better for single block text
       tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -",
     });
 
-    let text = result.data.text.trim();
-    console.log("Raw OCR:", text);
+    let raw = result.data.text.trim();
+    console.log("Raw:", raw);
 
-    // Improved cleaning
-    let cleaned = text
+    let cleaned = raw
       .toUpperCase()
       .replace(/[^A-Z0-9 -]/g, '')
       .replace(/\s+/g, ' ')
       .trim();
 
+    // Fix common OCR mistakes
+    cleaned = cleaned
+      .replace(/H/g, 'W')   // H often misread from W
+      .replace(/L/g, '1')   // L -> 1
+      .replace(/I/g, '1')
+      .replace(/B/g, '8')
+      .replace(/S/g, '5')   // sometimes
+      .replace(/O/g, '0')
+      .replace(/Z/g, '2')
+      .replace(/G/g, '6');
+
     console.log("Cleaned:", cleaned);
 
-    // Stronger regex for your order numbers
-    const patterns = [
-      /(SW801|FS801|SG801|SW801|G900|M900|W900|T900)[A-Z0-9 -]{5,}/i,
-      /[A-Z0-9]{8,15}/
-    ];
-
-    let match = null;
-    for (const regex of patterns) {
-      match = cleaned.match(regex);
-      if (match) break;
-    }
+    // Match patterns
+    const match = cleaned.match(/(SW801|FS801|SG801|W900|M900|G900|T900)[A-Z0-9 -]{5,}/i) ||
+                  cleaned.match(/[A-Z0-9]{10,15}/);
 
     if (!match) {
-      setStatus("No order number found - Try adjusting box");
-      alert("Could not detect a valid order number. Move/resize the box over the label and try again.");
+      setStatus("No order found - Adjust box and retry");
+      alert("Could not read clearly. Try moving the box tighter over the text.");
       return;
     }
 
-    const orderNumber = match[0].replace(/\s+/g, '').trim();
+    const orderNumber = match[0].replace(/\s+/g, '');
     sendToParent(orderNumber);
+
   } catch (err) {
     console.error(err);
-    setStatus("OCR failed - Try again");
+    setStatus("OCR failed");
   }
 }
 
 function sendToParent(value) {
   scanResultInput.value = value;
-  setStatus("Detected: " + value);
-  if (window.opener) {
-    window.opener.postMessage({ type: "barcode", value: value }, "*");
-  }
-  setTimeout(() => window.close(), 600);
+  setStatus("Success: " + value);
+  if (window.opener) window.opener.postMessage({ type: "barcode", value: value }, "*");
+  setTimeout(() => window.close(), 700);
 }
 
-// Init
+// Start everything
 document.getElementById("ocrBtn").addEventListener("click", runOCR);
 startCamera();
 initScanWindow();
