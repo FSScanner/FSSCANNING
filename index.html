@@ -113,9 +113,10 @@ async function runOCR() {
       .replace(/G/g, '6')
       .replace(/Z/g, '2');
 
-    // Improved prefix fixes
+    // Stronger prefix fixes
     cleaned = cleaned
-      .replace(/^H?5?W/, 'SW')      // H5W → SW
+      .replace(/^5W/, 'SW')           // ← New fix for your latest result
+      .replace(/^H?5?W/, 'SW')
       .replace(/^A?%?W/, 'SW')
       .replace(/^0{1,3}5?W?E?/, 'SW8')
       .replace(/^5W8/, 'SW8')
@@ -132,7 +133,7 @@ async function runOCR() {
       if (window.opener) window.opener.postMessage({ type: "barcode", value: final }, "*");
     } else {
       resultInput.value = cleaned.substring(0, 30);
-      setStatus("No match - Try tighter box");
+      setStatus("No match - tighten box");
     }
   } catch (err) {
     console.error(err);
