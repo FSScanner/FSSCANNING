@@ -65,7 +65,7 @@ async function startCamera() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
     video.srcObject = stream;
-    setStatus("Ready - Tight box over order number");
+    setStatus("Ready - Tight box over order number only");
   } catch (err) {
     setStatus("Camera error");
   }
@@ -118,21 +118,24 @@ async function runOCR() {
     canvas.height = Math.floor(rect.height * scaleY);
     const ctx = canvas.getContext("2d");
 
-    ctx.filter = "grayscale(100%) contrast(250%) brightness(130%)";
+    ctx.filter = "grayscale(100%) contrast(240%) brightness(135%)";
     ctx.drawImage(video,
       Math.floor((rect.left - vRect.left) * scaleX),
       Math.floor((rect.top - vRect.top) * scaleY),
       canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
 
-    const result = await Tesseract.recognize(canvas.toDataURL("image/png", 0.93), "eng", {
+    const result = await Tesseract.recognize(canvas.toDataURL("image/png", 0.94), "eng", {
       tessedit_pageseg_mode: "7",
       tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     });
 
-    let raw = result.data.text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    let raw = result.data.text.toUpperCase();
     console.log("Raw OCR:", raw);
 
-    let cleaned = raw
+    // Aggressive cleaning
+    let cleaned = raw.replace(/[^A-Z0-9]/g, '');
+
+    cleaned = cleaned
       .replace(/O/g, '0')
       .replace(/I|L/g, '1')
       .replace(/B/g, '8')
@@ -140,41 +143,31 @@ async function runOCR() {
       .replace(/G/g, '6')
       .replace(/Z/g, '2');
 
-    // === Prefix Corrections for ALL patterns ===
+    // Strong prefix fixes
     cleaned = cleaned
       // SW801
-      .replace(/^0{1,2}05?W?E?/, 'SW8')
+      .replace(/^A5W/, 'SW')
+      .replace(/^0{1,3}5?W?E?/, 'SW8')
       .replace(/^5W8/, 'SW8')
-      .replace(/^00SW/, 'SW')
-      .replace(/^8W/, 'SW')
+      .replace(/^A8/, 'SW8')
       // FS801
       .replace(/^F5/, 'FS')
-      .replace(/^F0/, 'FS')
       .replace(/^FS0/, 'FS8')
       // SG801
       .replace(/^5G/, 'SG')
       .replace(/^S6/, 'SG')
-      // *900 series
-      .replace(/^W9/, 'W9')
-      .replace(/^M9/, 'M9')
-      .replace(/^T9/, 'T9')
-      .replace(/^G9/, 'G9')
-      .replace(/^09/, 'G9')   // common misread
-      .replace(/^00G/, 'G')
-      .replace(/^00W/, 'W')
-      .replace(/^00M/, 'M')
-      .replace(/^00T/, 'T');
+      // 900 series
+      .replace(/^0{1,2}(9|G|W|M|T)/, '$1');
 
-    console.log("After prefix fix:", cleaned);
+    console.log("Cleaned:", cleaned);
 
-    // Final pattern matching
-    const match = cleaned.match(/SW801[0-9]{5,}/) ||
-                  cleaned.match(/FS801[0-9]{5,}/) ||
-                  cleaned.match(/SG801[0-9]{5,}/) ||
-                  cleaned.match(/W900[0-9]{5,}/) ||
-                  cleaned.match(/M900[0-9]{5,}/) ||
-                  cleaned.match(/T900[0-9]{5,}/) ||
-                  cleaned.match(/G900[0-9]{5,}/) ||
+    const match = cleaned.match(/SW801[0-9]{5,}/i) ||
+                  cleaned.match(/FS801[0-9]{5,}/i) ||
+                  cleaned.match(/SG801[0-9]{5,}/i) ||
+                  cleaned.match(/W900[0-9]{5,}/i) ||
+                  cleaned.match(/M900[0-9]{5,}/i) ||
+                  cleaned.match(/T900[0-9]{5,}/i) ||
+                  cleaned.match(/G900[0-9]{5,}/i) ||
                   cleaned.match(/[A-Z0-9]{11,18}/);
 
     if (match) {
@@ -184,7 +177,7 @@ async function runOCR() {
       if (window.opener) window.opener.postMessage({ type: "barcode", value: final }, "*");
       setTimeout(() => window.close(), 700);
     } else {
-      setStatus("No match - try tightening the box");
+      setStatus("No match - tighten box around text only");
     }
   } catch (e) {
     console.error(e);
