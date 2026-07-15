@@ -142,7 +142,7 @@ async function runOCR() {
     const ctx = canvas.getContext("2d");
 
     // Strong preprocessing for better OCR on labels
-    ctx.filter = "grayscale(100%) contrast(320%) brightness(135%)";
+    ctx.filter = "grayscale(30%) contrast(320%) brightness(135%)";
     ctx.drawImage(video, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
 
     const imageDataUrl = canvas.toDataURL("image/png", 0.92);
