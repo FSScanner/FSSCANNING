@@ -7,38 +7,29 @@
 <script src="https://cdn.jsdelivr.net/npm/interactjs@1.10.11/dist/interact.min.js"></script>
 <style>
   body { margin:0; padding:0; background:#000; color:white; font-family:Arial, sans-serif; overflow:hidden; }
-  #topBar {
-    position:fixed; top:0; left:0; right:0; z-index:10000;
-    background:rgba(0,0,0,0.9); padding:10px; text-align:center;
-  }
+  #topBar { position:fixed; top:0; left:0; right:0; z-index:10000; background:rgba(0,0,0,0.9); padding:10px; text-align:center; }
   h2 { margin:5px 0; font-size:26px; }
   #scanResult { width:90%; max-width:500px; margin:8px auto; padding:12px; font-size:22px; border-radius:8px; }
   button { padding:14px 24px; font-size:20px; font-weight:bold; border:none; border-radius:8px; cursor:pointer; margin:5px; }
   #ocrBtn { background:#0099ff; color:white; }
 
-  #readerContainer {
-    position:fixed; top:70px; left:0; right:0; bottom:0; background:#000;
-  }
+  #readerContainer { position:fixed; top:70px; left:0; right:0; bottom:0; background:#000; }
   video { width:100%; height:100%; object-fit:cover; }
 
-  /* Improved Overlay */
   #overlay {
     position:absolute; inset:0; z-index:100;
-    background:rgba(0,0,0,0.7);
+    background:rgba(0,0,0,0.65);
     pointer-events: none;
   }
   #scanWindow {
     position:absolute;
-    border:4px solid #00ff00; /* brighter green for visibility */
-    background: rgba(255,255,255,0.15); /* light inside */
-    box-shadow: 0 0 0 9999px rgba(0,0,0,0.75),
-                inset 0 0 20px rgba(0,255,0,0.3);
+    border:4px solid #00ff88;
+    background: rgba(255,255,255,0.08);
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.75);
     box-sizing: border-box;
-    min-width: 160px;
-    min-height: 100px;
+    min-width: 180px; min-height: 110px;
     resize: both;
     overflow: hidden;
-    touch-action: none;
   }
 
   #statusMessage {
@@ -72,54 +63,44 @@ const scanResultInput = document.getElementById("scanResult");
 
 async function startCamera() {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ 
-      video: { facingMode: "environment", width: {ideal:1280} } 
-    });
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
     video.srcObject = stream;
-    setStatus("Camera ready - Drag & resize the box");
+    setStatus("Ready - Tight box over order number only");
   } catch (err) {
-    setStatus("Camera failed");
+    setStatus("Camera error");
   }
 }
 
 function setStatus(msg) { statusMessage.innerText = msg; }
 
-// Drag + Resize
 function initScanWindow() {
-  scanWindow.style.left = "10%";
-  scanWindow.style.top = "30%";
-  scanWindow.style.width = "80%";
-  scanWindow.style.height = "32%";
+  scanWindow.style.left = "12%";
+  scanWindow.style.top = "35%";
+  scanWindow.style.width = "76%";
+  scanWindow.style.height = "28%";
 
   interact(scanWindow)
-    .draggable({
-      listeners: {
-        move(e) {
-          let x = (parseFloat(scanWindow.dataset.x) || 0) + e.dx;
-          let y = (parseFloat(scanWindow.dataset.y) || 0) + e.dy;
-          scanWindow.style.transform = `translate(${x}px, ${y}px)`;
-          scanWindow.dataset.x = x;
-          scanWindow.dataset.y = y;
-        }
-      }
-    })
+    .draggable({ listeners: { move(e) {
+      let x = (parseFloat(scanWindow.dataset.x) || 0) + e.dx;
+      let y = (parseFloat(scanWindow.dataset.y) || 0) + e.dy;
+      scanWindow.style.transform = `translate(${x}px, ${y}px)`;
+      scanWindow.dataset.x = x;
+      scanWindow.dataset.y = y;
+    }}})
     .resizable({
       edges: { left: true, right: true, top: true, bottom: true },
-      margin: 15,
-      listeners: {
-        move(e) {
-          let x = parseFloat(scanWindow.dataset.x) || 0;
-          let y = parseFloat(scanWindow.dataset.y) || 0;
-          x += e.deltaRect.left;
-          y += e.deltaRect.top;
-
-          scanWindow.style.width = e.rect.width + "px";
-          scanWindow.style.height = e.rect.height + "px";
-          scanWindow.style.transform = `translate(${x}px, ${y}px)`;
-          scanWindow.dataset.x = x;
-          scanWindow.dataset.y = y;
-        }
-      }
+      margin: 12,
+      listeners: { move(e) {
+        let x = parseFloat(scanWindow.dataset.x) || 0;
+        let y = parseFloat(scanWindow.dataset.y) || 0;
+        x += e.deltaRect.left;
+        y += e.deltaRect.top;
+        scanWindow.style.width = e.rect.width + "px";
+        scanWindow.style.height = e.rect.height + "px";
+        scanWindow.style.transform = `translate(${x}px, ${y}px)`;
+        scanWindow.dataset.x = x;
+        scanWindow.dataset.y = y;
+      }}
     });
 }
 
@@ -137,56 +118,54 @@ async function runOCR() {
     canvas.height = Math.floor(rect.height * scaleY);
     const ctx = canvas.getContext("2d");
 
-    // Very strong preprocessing
-    ctx.filter = "grayscale(100%) contrast(380%) brightness(155%) saturate(1.2)";
-    ctx.drawImage(video, 
+    // Balanced preprocessing (reduced from before)
+    ctx.filter = "grayscale(100%) contrast(260%) brightness(125%)";
+    ctx.drawImage(video,
       Math.floor((rect.left - vRect.left) * scaleX),
       Math.floor((rect.top - vRect.top) * scaleY),
       canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
 
-    const imageDataUrl = canvas.toDataURL("image/png", 0.95);
-
-    const result = await Tesseract.recognize(imageDataUrl, "eng", {
+    const result = await Tesseract.recognize(canvas.toDataURL("image/png", 0.92), "eng", {
       tessedit_pageseg_mode: "7",
       tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     });
 
-    let text = result.data.text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    let raw = result.data.text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    console.log("Raw:", raw);
 
-    console.log("Raw OCR:", text);
-
-    // Aggressive corrections for common misreads
-    let cleaned = text
-      .replace(/T/g, '1')     // T often = 1
-      .replace(/W/g, '8')     // W misread as 8 or part of 7
-      .replace(/E/g, '8')     // E -> 8 sometimes
-      .replace(/H/g, '8')
-      .replace(/S/g, '5')
+    // Conservative cleaning
+    let cleaned = raw
       .replace(/O/g, '0')
-      .replace(/I/g, '1')
-      .replace(/L/g, '1')
+      .replace(/I|L/g, '1')
       .replace(/B/g, '8')
+      .replace(/S/g, '5')
       .replace(/G/g, '6')
       .replace(/Z/g, '2');
 
     console.log("Cleaned:", cleaned);
 
+    // Strict pattern match for your orders
     const match = cleaned.match(/SW801[0-9]{6,}/) || 
-                  cleaned.match(/FS801[0-9]{5,}/) ||
-                  cleaned.match(/[A-Z0-9]{11,}/);
+                  cleaned.match(/FS801[0-9]{6,}/) ||
+                  cleaned.match(/SG801[0-9]{6,}/) ||
+                  cleaned.match(/W900[0-9]{6,}/) ||
+                  cleaned.match(/M900[0-9]{6,}/) ||
+                  cleaned.match(/T900[0-9]{6,}/) ||
+                  cleaned.match(/G900[0-9]{6,}/) ||
+                  cleaned.match(/[A-Z0-9]{11,15}/);
 
     if (match) {
       const final = match[0];
       scanResultInput.value = final;
-      setStatus("Detected: " + final);
+      setStatus("✅ " + final);
       if (window.opener) window.opener.postMessage({ type: "barcode", value: final }, "*");
-      setTimeout(() => window.close(), 600);
+      setTimeout(() => window.close(), 700);
     } else {
-      setStatus("No match - move box tighter");
+      setStatus("No valid number - tighten box around text");
     }
   } catch (e) {
     console.error(e);
-    setStatus("OCR failed - try again");
+    setStatus("Try again");
   }
 }
 
