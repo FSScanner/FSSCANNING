@@ -2,192 +2,92 @@
 <html lang="en">
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FS OCR Scanner</title>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/interactjs@1.10.11/dist/interact.min.js"></script>
+<title>FS OCR Scanner - PaddleOCR</title>
+<script src="https://cdn.jsdelivr.net/npm/@paddlejs/paddleocr@latest/dist/paddleocr.min.js"></script>
 <style>
-  body { margin:0; padding:0; background:#000; color:white; font-family:Arial, sans-serif; overflow:hidden; }
+  body { margin:0; padding:0; background:#000; color:white; font-family:Arial, sans-serif; }
   #topBar { position:fixed; top:0; left:0; right:0; z-index:10000; background:rgba(0,0,0,0.9); padding:10px; text-align:center; }
-  h2 { margin:5px 0; font-size:26px; }
-  #scanResult { width:90%; max-width:500px; margin:8px auto; padding:12px; font-size:22px; border-radius:8px; }
-  button { padding:14px 24px; font-size:20px; font-weight:bold; border:none; border-radius:8px; cursor:pointer; margin:5px; }
-  #ocrBtn { background:#0099ff; color:white; }
-
-  #readerContainer { position:fixed; top:70px; left:0; right:0; bottom:0; background:#000; }
-  video { width:100%; height:100%; object-fit:cover; }
-
-  #overlay {
-    position:absolute; inset:0; z-index:100;
-    background:rgba(0,0,0,0.65);
-    pointer-events: none;
-  }
-  #scanWindow {
-    position:absolute;
-    border:4px solid #00ff88;
-    background: rgba(255,255,255,0.08);
-    box-shadow: 0 0 0 9999px rgba(0,0,0,0.75);
-    box-sizing: border-box;
-    min-width: 180px; min-height: 110px;
-    resize: both;
-    overflow: hidden;
-  }
-
-  #statusMessage {
-    position:fixed; bottom:20px; left:20px; right:20px; z-index:10001;
-    background:rgba(0,0,0,0.85); padding:14px; border-radius:8px; text-align:center; font-size:18px;
-  }
+  button { padding:16px 32px; font-size:22px; background:#00cc66; color:white; border:none; border-radius:8px; margin:10px; }
+  #scanResult { font-size:24px; padding:12px; background:#111; width:90%; margin:10px auto; border-radius:8px; }
+  #statusMessage { position:fixed; bottom:20px; left:20px; right:20px; background:rgba(0,0,0,0.85); padding:14px; border-radius:8px; text-align:center; }
 </style>
 </head>
 <body>
 <div id="topBar">
-  <h2>FS OCR Scanner</h2>
-  <input type="text" id="scanResult" placeholder="Detected order number" readonly>
+  <h2>PaddleOCR Scanner</h2>
+  <div id="scanResult">Waiting for scan...</div>
   <button id="ocrBtn">Scan Text</button>
 </div>
 
-<div id="readerContainer">
-  <video id="reader" autoplay playsinline></video>
-  <div id="overlay">
-    <div id="scanWindow"></div>
-  </div>
+<div style="position:fixed;top:80px;bottom:0;left:0;right:0;background:#000">
+  <video id="reader" autoplay playsinline style="width:100%;height:100%;object-fit:cover;"></video>
 </div>
 
 <div id="statusMessage">Starting camera...</div>
 
 <script>
-let stream = null;
 const video = document.getElementById("reader");
-const scanWindow = document.getElementById("scanWindow");
+const scanResult = document.getElementById("scanResult");
 const statusMessage = document.getElementById("statusMessage");
-const scanResultInput = document.getElementById("scanResult");
 
 async function startCamera() {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-    video.srcObject = stream;
-    setStatus("Ready - Tight box over order number only");
-  } catch (err) {
-    setStatus("Camera error");
-  }
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+  video.srcObject = stream;
+  setStatus("Camera ready - Point at label and tap Scan");
 }
 
-function setStatus(msg) { statusMessage.innerText = msg; }
-
-function initScanWindow() {
-  scanWindow.style.left = "12%";
-  scanWindow.style.top = "35%";
-  scanWindow.style.width = "76%";
-  scanWindow.style.height = "28%";
-
-  interact(scanWindow)
-    .draggable({ listeners: { move(e) {
-      let x = (parseFloat(scanWindow.dataset.x) || 0) + e.dx;
-      let y = (parseFloat(scanWindow.dataset.y) || 0) + e.dy;
-      scanWindow.style.transform = `translate(${x}px, ${y}px)`;
-      scanWindow.dataset.x = x;
-      scanWindow.dataset.y = y;
-    }}})
-    .resizable({
-      edges: { left: true, right: true, top: true, bottom: true },
-      margin: 12,
-      listeners: { move(e) {
-        let x = parseFloat(scanWindow.dataset.x) || 0;
-        let y = parseFloat(scanWindow.dataset.y) || 0;
-        x += e.deltaRect.left;
-        y += e.deltaRect.top;
-        scanWindow.style.width = e.rect.width + "px";
-        scanWindow.style.height = e.rect.height + "px";
-        scanWindow.style.transform = `translate(${x}px, ${y}px)`;
-        scanWindow.dataset.x = x;
-        scanWindow.dataset.y = y;
-      }}
-    });
+function setStatus(msg) {
+  statusMessage.innerText = msg;
 }
 
 async function runOCR() {
-  setStatus("Scanning...");
+  setStatus("Analyzing with PaddleOCR...");
   try {
-    const rect = scanWindow.getBoundingClientRect();
-    const vRect = video.getBoundingClientRect();
-
-    const scaleX = video.videoWidth / vRect.width;
-    const scaleY = video.videoHeight / vRect.height;
-
     const canvas = document.createElement("canvas");
-    canvas.width = Math.floor(rect.width * scaleX);
-    canvas.height = Math.floor(rect.height * scaleY);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0);
 
-    ctx.filter = "grayscale(100%) contrast(240%) brightness(135%)";
-    ctx.drawImage(video,
-      Math.floor((rect.left - vRect.left) * scaleX),
-      Math.floor((rect.top - vRect.top) * scaleY),
-      canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
-
-    const result = await Tesseract.recognize(canvas.toDataURL("image/png", 0.94), "eng", {
-      tessedit_pageseg_mode: "7",
-      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    // Use PaddleOCR
+    const result = await paddleOCR.recognize(canvas, {
+      useAngle: true,
+      usePaddle: true
     });
 
-    let raw = result.data.text.toUpperCase();
-    console.log("Raw OCR:", raw);
+    let text = result.text || "";
+    console.log("PaddleOCR Result:", text);
 
-    // Aggressive cleaning
-    let cleaned = raw.replace(/[^A-Z0-9]/g, '');
+    let cleaned = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
+    // Same prefix fixes as before
     cleaned = cleaned
+      .replace(/^A?%?W/, 'SW')
+      .replace(/^0{1,3}5?W?E?/, 'SW8')
       .replace(/O/g, '0')
       .replace(/I|L/g, '1')
-      .replace(/B/g, '8')
-      .replace(/S/g, '5')
-      .replace(/G/g, '6')
-      .replace(/Z/g, '2');
+      .replace(/B/g, '8');
 
-    // Strong prefix fixes
-    cleaned = cleaned
-      // SW801
-      .replace(/^A5W/, 'SW')
-      .replace(/^0{1,3}5?W?E?/, 'SW8')
-      .replace(/^5W8/, 'SW8')
-      .replace(/^A8/, 'SW8')
-      // FS801
-      .replace(/^F5/, 'FS')
-      .replace(/^FS0/, 'FS8')
-      // SG801
-      .replace(/^5G/, 'SG')
-      .replace(/^S6/, 'SG')
-      // 900 series
-      .replace(/^0{1,2}(9|G|W|M|T)/, '$1');
-
-    console.log("Cleaned:", cleaned);
-
-    const match = cleaned.match(/SW801[0-9]{5,}/i) ||
-                  cleaned.match(/FS801[0-9]{5,}/i) ||
-                  cleaned.match(/SG801[0-9]{5,}/i) ||
-                  cleaned.match(/W900[0-9]{5,}/i) ||
-                  cleaned.match(/M900[0-9]{5,}/i) ||
-                  cleaned.match(/T900[0-9]{5,}/i) ||
-                  cleaned.match(/G900[0-9]{5,}/i) ||
-                  cleaned.match(/[A-Z0-9]{11,18}/);
+    const match = cleaned.match(/(SW801|FS801|SG801|W900|M900|T900|G900)[0-9]{5,}/);
 
     if (match) {
       const final = match[0];
-      scanResultInput.value = final;
-      setStatus("✅ " + final);
+      scanResult.textContent = final;
+      setStatus("✅ Success: " + final);
       if (window.opener) window.opener.postMessage({ type: "barcode", value: final }, "*");
-      setTimeout(() => window.close(), 700);
     } else {
-      setStatus("No match - tighten box around text only");
+      scanResult.textContent = cleaned.substring(0, 30) || "No match";
+      setStatus("Try different angle or lighting");
     }
-  } catch (e) {
-    console.error(e);
-    setStatus("Try again");
+  } catch (err) {
+    console.error(err);
+    setStatus("PaddleOCR failed - falling back or try again");
   }
 }
 
+// Init
 document.getElementById("ocrBtn").addEventListener("click", runOCR);
 startCamera();
-initScanWindow();
 </script>
 </body>
 </html>
