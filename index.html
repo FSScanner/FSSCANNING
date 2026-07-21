@@ -91,7 +91,7 @@ async function runOCR() {
 
     let cleaned = text.toUpperCase();
 
-    // Protect full prefixes FIRST
+    // Early prefix protection
     cleaned = cleaned
       .replace(/G900/g, 'G900_PROTECTED')
       .replace(/W900/g, 'W900_PROTECTED')
@@ -101,7 +101,7 @@ async function runOCR() {
       .replace(/FS801/g, 'FS801_PROTECTED')
       .replace(/SG801/g, 'SG801_PROTECTED');
 
-    // Only do safe general fixes (no G replacement)
+    // Safe general fixes (no G or S replacement)
     cleaned = cleaned
       .replace(/O/g, '0')
       .replace(/I|L/g, '1')
@@ -122,7 +122,7 @@ async function runOCR() {
 
     console.log("Cleaned:", cleaned);
 
-    // Precise format matching
+    // Precise matching
     const match = cleaned.match(/(SW801|FS801|SG801|W900|M900|T900|G900)[0-9]{6}(?:[-/_][A-Z0-9]+)?/i);
 
     if (match) {
