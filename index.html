@@ -10,13 +10,20 @@
   #topBar { position:fixed; top:0; left:0; right:0; z-index:10000; background:rgba(0,0,0,0.2); padding:10px; text-align:center; }
   h2 { margin:5px 0; font-size:26px; }
   #scanResult { width:90%; max-width:500px; margin:8px auto; padding:12px; font-size:22px; border-radius:8px; background:#111; }
+  
+  .buttonContainer {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    z-index:10001; display:flex; gap:15px; flex-wrap:wrap; justify-content:center;
+  }
+  
   button {
     padding:18px 40px; font-size:24px; font-weight:bold;
     background:#0099ff; color:white; border:none; border-radius:12px;
-    cursor:pointer; position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
-    z-index:10001; box-shadow:0 4px 15px rgba(0,153,255,0.2);
+    cursor:pointer; box-shadow:0 4px 15px rgba(0,153,255,0.2);
+    min-width:160px;
   }
   .pasteBtn { background:#34a853; }
+
   #overlay { position:absolute; inset:0; z-index:100; background:rgba(0,0,0,0.2); pointer-events:none; }
   #scanWindow {
     position:absolute;
@@ -27,15 +34,13 @@
     min-width:160px; min-height:80px;
     resize:both; overflow:hidden;
   }
-  #status { position:fixed; bottom:110px; left:20px; right:20px; background:rgba(0,0,0,0.2); padding:12px; border-radius:8px; text-align:center; font-size:17px; z-index:10000; }
+  #status { position:fixed; bottom:120px; left:20px; right:20px; background:rgba(0,0,0,0.2); padding:12px; border-radius:8px; text-align:center; font-size:17px; z-index:10000; }
 </style>
 </head>
 <body>
 <div id="topBar">
   <h2>FS OCR Scanner</h2>
   <input type="text" id="scanResult" placeholder="Result appears here" readonly>
-  <button id="ocrBtn">SCAN with Camera</button>
-  <button class="pasteBtn" id="pasteBtn">📋 Paste from Lens</button>
 </div>
 
 <div style="position:fixed; top:70px; bottom:0; left:0; right:0; background:#000;">
@@ -44,6 +49,11 @@
 </div>
 
 <div id="status">Ready - Tight thin box over order number</div>
+
+<div class="buttonContainer">
+  <button id="ocrBtn">📷 SCAN with Camera</button>
+  <button class="pasteBtn" id="pasteBtn">📋 Paste from Lens</button>
+</div>
 
 <script>
 const video = document.getElementById("video");
@@ -93,52 +103,4 @@ async function runOCR() {
 
     let cleaned = text.toUpperCase().replace(/[^A-Z0-9/-]/g, '');
 
-    const match = cleaned.match(/(SW801|FS801|SG801|W900|M900|T900|G900)[0-9]{5,}(?:[-/_][A-Z0-9]+)?/i);
-
-    if (match) {
-      sendResult(match[0]);
-    } else {
-      setStatus("No match - tighten box");
-    }
-  } catch (err) {
-    console.error(err);
-    setStatus("OCR Error");
-  }
-}
-
-function sendResult(value) {
-  resultInput.value = value;
-  setStatus("✅ " + value);
-  
-  // Send back to your main page
-  if (window.opener) {
-    window.opener.postMessage({ type: "barcode", value: value }, "*");
-  }
-  
-  // Auto close after success
-  setTimeout(() => window.close(), 800);
-}
-
-async function pasteFromClipboard() {
-  try {
-    const text = await navigator.clipboard.readText();
-    if (text) {
-      let cleaned = text.toUpperCase().replace(/[^A-Z0-9/-]/g, '');
-      const match = cleaned.match(/(SW801|FS801|SG801|W900|M900|T900|G900)[0-9]{5,}(?:[-/_][A-Z0-9]+)?/i);
-      if (match) sendResult(match[0]);
-      else resultInput.value = cleaned;
-    }
-  } catch (e) {
-    const manual = prompt("Paste text from Google Lens:");
-    if (manual) sendResult(manual);
-  }
-}
-
-// Init
-document.getElementById("ocrBtn").addEventListener("click", runOCR);
-document.getElementById("pasteBtn").addEventListener("click", pasteFromClipboard);
-startCamera();
-initScanBox();
-</script>
-</body>
-</html>
+    const match = cleaned.match(/(SW801|FS801|SG801|W900|M900|T900|G900
