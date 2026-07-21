@@ -16,6 +16,7 @@
     cursor:pointer; position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
     z-index:10001; box-shadow:0 4px 15px rgba(0,153,255,0.2);
   }
+  .pasteBtn { background:#34a853; }
   #overlay { position:absolute; inset:0; z-index:100; background:rgba(0,0,0,0.2); pointer-events:none; }
   #scanWindow {
     position:absolute;
@@ -33,6 +34,8 @@
 <div id="topBar">
   <h2>FS OCR Scanner</h2>
   <input type="text" id="scanResult" placeholder="Result appears here" readonly>
+  <button id="ocrBtn">SCAN with Camera</button>
+  <button class="pasteBtn" id="pasteBtn">📋 Paste from Lens</button>
 </div>
 
 <div style="position:fixed; top:70px; bottom:0; left:0; right:0; background:#000;">
@@ -41,7 +44,6 @@
 </div>
 
 <div id="status">Ready - Tight thin box over order number</div>
-<button id="ocrBtn">SCAN</button>
 
 <script>
 const video = document.getElementById("video");
@@ -91,28 +93,11 @@ async function runOCR() {
 
     let cleaned = text.toUpperCase().replace(/[^A-Z0-9/-]/g, '');
 
-    // Minimal targeted fixes only
-    cleaned = cleaned
-      .replace(/5W801/g, 'SW801')
-      .replace(/F5/g, 'FS')
-      .replace(/S6/g, 'SG')
-      .replace(/0G900/g, 'G900')
-      .replace(/0W900/g, 'W900')
-      .replace(/0M900/g, 'M900')
-      .replace(/0T900/g, 'T900');
-
-    console.log("Cleaned:", cleaned);
-
-    // Final match - looks for known prefix + 6 digits + optional suffix
-    const match = cleaned.match(/(SW801|FS801|SG801|W900|M900|T900|G900)[0-9]{6}(?:[-/_][A-Z0-9]+)?/i);
+    const match = cleaned.match(/(SW801|FS801|SG801|W900|M900|T900|G900)[0-9]{5,}(?:[-/_][A-Z0-9]+)?/i);
 
     if (match) {
-      const final = match[0];
-      resultInput.value = final;
-      setStatus("✅ " + final);
-      if (window.opener) window.opener.postMessage({ type: "barcode", value: final }, "*");
+      sendResult(match[0]);
     } else {
-      resultInput.value = cleaned.substring(0, 45);
       setStatus("No match - tighten box");
     }
   } catch (err) {
@@ -121,7 +106,37 @@ async function runOCR() {
   }
 }
 
+function sendResult(value) {
+  resultInput.value = value;
+  setStatus("✅ " + value);
+  
+  // Send back to your main page
+  if (window.opener) {
+    window.opener.postMessage({ type: "barcode", value: value }, "*");
+  }
+  
+  // Auto close after success
+  setTimeout(() => window.close(), 800);
+}
+
+async function pasteFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      let cleaned = text.toUpperCase().replace(/[^A-Z0-9/-]/g, '');
+      const match = cleaned.match(/(SW801|FS801|SG801|W900|M900|T900|G900)[0-9]{5,}(?:[-/_][A-Z0-9]+)?/i);
+      if (match) sendResult(match[0]);
+      else resultInput.value = cleaned;
+    }
+  } catch (e) {
+    const manual = prompt("Paste text from Google Lens:");
+    if (manual) sendResult(manual);
+  }
+}
+
+// Init
 document.getElementById("ocrBtn").addEventListener("click", runOCR);
+document.getElementById("pasteBtn").addEventListener("click", pasteFromClipboard);
 startCamera();
 initScanBox();
 </script>
