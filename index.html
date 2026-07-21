@@ -91,32 +91,32 @@ async function runOCR() {
 
     let cleaned = text.toUpperCase();
 
-    // Early protection with safe placeholders
+    // Safe early protection
     cleaned = cleaned
-      .replace(/G900/g, '__G900__')
-      .replace(/W900/g, '__W900__')
-      .replace(/M900/g, '__M900__')
-      .replace(/T900/g, '__T900__')
-      .replace(/SW801/g, '__SW801__')
-      .replace(/FS801/g, '__FS801__')
-      .replace(/SG801/g, '__SG801__');
+      .replace(/G900/g, '[[G900]]')
+      .replace(/W900/g, '[[W900]]')
+      .replace(/M900/g, '[[M900]]')
+      .replace(/T900/g, '[[T900]]')
+      .replace(/SW801/g, '[[SW801]]')
+      .replace(/FS801/g, '[[FS801]]')
+      .replace(/SG801/g, '[[SG801]]');
 
-    // General fixes
+    // General fixes (safe now)
     cleaned = cleaned
       .replace(/O/g, '0')
       .replace(/I|L/g, '1')
       .replace(/B/g, '8')
       .replace(/Z/g, '2');
 
-    // Restore prefixes
+    // Restore
     cleaned = cleaned
-      .replace(/__G900__/g, 'G900')
-      .replace(/__W900__/g, 'W900')
-      .replace(/__M900__/g, 'M900')
-      .replace(/__T900__/g, 'T900')
-      .replace(/__SW801__/g, 'SW801')
-      .replace(/__FS801__/g, 'FS801')
-      .replace(/__SG801__/g, 'SG801');
+      .replace(/\[\[G900\]\]/g, 'G900')
+      .replace(/\[\[W900\]\]/g, 'W900')
+      .replace(/\[\[M900\]\]/g, 'M900')
+      .replace(/\[\[T900\]\]/g, 'T900')
+      .replace(/\[\[SW801\]\]/g, 'SW801')
+      .replace(/\[\[FS801\]\]/g, 'FS801')
+      .replace(/\[\[SG801\]\]/g, 'SG801');
 
     cleaned = cleaned.replace(/[^A-Z0-9/-]/g, '');
 
