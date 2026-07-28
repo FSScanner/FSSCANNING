@@ -205,26 +205,27 @@ const scanWindow  = document.getElementById('scanWindow');
 function switchMode(mode) {
   if (mode === currentMode) return;
 
-  // Stop whatever is running
-  stopEverything();
+  // Fully stop everything first
+  stopEverything().then(() => {
+    currentMode = mode;
 
-  currentMode = mode;
+    document.getElementById('btnBarcode').classList.toggle('active', mode === 'barcode');
+    document.getElementById('btnOcr').classList.toggle('active', mode === 'ocr');
 
-  document.getElementById('btnBarcode').classList.toggle('active', mode === 'barcode');
-  document.getElementById('btnOcr').classList.toggle('active', mode === 'ocr');
+    document.getElementById('barcodeMode').style.display = mode === 'barcode' ? 'block' : 'none';
+    document.getElementById('ocrMode').style.display     = mode === 'ocr'     ? 'block' : 'none';
 
-  document.getElementById('barcodeMode').style.display = mode === 'barcode' ? 'block' : 'none';
-  document.getElementById('ocrMode').style.display     = mode === 'ocr'     ? 'block' : 'none';
-
-  if (mode === 'barcode') {
-    actionBtn.textContent = 'Start Barcode';
-    setStatus('Ready – press Start Barcode');
-  } else {
-    actionBtn.textContent = 'SCAN';
-    setStatus('Position green box over the text, then press SCAN');
-    initScanBox();
-    startCameraForOcr();
-  }
+    if (mode === 'barcode') {
+      actionBtn.textContent = 'Start Barcode';
+      setStatus('Ready – press Start Barcode');
+    } else {
+      actionBtn.textContent = 'SCAN';
+      setStatus('Position green box over the text, then press SCAN');
+      initScanBox();
+      // Small delay helps the camera re-acquire cleanly
+      setTimeout(startCameraForOcr, 300);
+    }
+  });
 }
 
 function setStatus(msg) {
@@ -400,31 +401,35 @@ async function runOcr() {
     console.log('Raw OCR:', text);
 
     // Safe cleaning
-    let cleaned = text.toUpperCase().replace(/\s+/g, '');
+let cleaned = text.toUpperCase().replace(/\s+/g, '');
 
-    // Protect prefixes
-    const protectedMap = {};
-    ALLOWED_PREFIXES.forEach((p, i) => {
-      const token = `__P${i}__`;
-      protectedMap[token] = p;
-      cleaned = cleaned.replaceAll(p, token);
-    });
+// Protect prefixes
+const protectedMap = {};
+ALLOWED_PREFIXES.forEach((p, i) => {
+  const token = `__P${i}__`;
+  protectedMap[token] = p;
+  cleaned = cleaned.replaceAll(p, token);
+});
 
-    // Common OCR mistakes
-    cleaned = cleaned
-      .replace(/O/g, '0')
-      .replace(/[IL]/g, '1')
-      .replace(/B/g, '8')
-      .replace(/S/g, '5')
-      .replace(/Z/g, '2')
-      .replace(/G/g, '6');
+// Common OCR mistakes – DO NOT replace G
+cleaned = cleaned
+  .replace(/O/g, '0')
+  .replace(/[IL]/g, '1')
+  .replace(/B/g, '8')
+  .replace(/S/g, '5')
+  .replace(/Z/g, '2');
+  // G → 6 removed on purpose
 
-    // Restore prefixes
-    Object.entries(protectedMap).forEach(([token, original]) => {
-      cleaned = cleaned.replaceAll(token, original);
-    });
+// Restore prefixes
+Object.entries(protectedMap).forEach(([token, original]) => {
+  cleaned = cleaned.replaceAll(token, original);
+});
 
-    cleaned = cleaned.replace(/[^A-Z0-9/-]/g, '');
+// Soft recovery of slash (optional but helpful)
+cleaned = cleaned.replace(/([A-Z0-9])1(?=[0-9]{2,})/g, '$1/');
+
+// Final allowed characters only
+cleaned = cleaned.replace(/[^A-Z0-9/-]/g, '');
     console.log('Cleaned:', cleaned);
 
     // Match
@@ -463,12 +468,29 @@ function handleAction() {
   }
 }
 
-function stopEverything() {
-  stopBarcode();
+async function stopEverything() {
+  // Stop barcode scanner
+  if (html5QrCode && isBarcodeRunning) {
+    try {
+      await html5QrCode.stop();
+      html5QrCode.clear();
+    } catch (e) {}
+  }
+  isBarcodeRunning = false;
+  html5QrCode = null;
+
+  // Stop OCR camera stream
   if (videoStream) {
     videoStream.getTracks().forEach(t => t.stop());
     videoStream = null;
   }
+  if (video.srcObject) {
+    video.srcObject = null;
+  }
+
+  // Clear the reader div so html5-qrcode can re-create cleanly
+  const reader = document.getElementById('reader');
+  if (reader) reader.innerHTML = '';
 }
 
 // Start in barcode mode
