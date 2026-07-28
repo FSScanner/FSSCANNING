@@ -202,30 +202,30 @@ const video       = document.getElementById('video');
 const scanWindow  = document.getElementById('scanWindow');
 
 // ---------- Mode switching ----------
-function switchMode(mode) {
+async function switchMode(mode) {
   if (mode === currentMode) return;
 
-  // Fully stop everything first
-  stopEverything().then(() => {
-    currentMode = mode;
+  // Fully release the camera first
+  await stopEverything();
 
-    document.getElementById('btnBarcode').classList.toggle('active', mode === 'barcode');
-    document.getElementById('btnOcr').classList.toggle('active', mode === 'ocr');
+  currentMode = mode;
 
-    document.getElementById('barcodeMode').style.display = mode === 'barcode' ? 'block' : 'none';
-    document.getElementById('ocrMode').style.display     = mode === 'ocr'     ? 'block' : 'none';
+  document.getElementById('btnBarcode').classList.toggle('active', mode === 'barcode');
+  document.getElementById('btnOcr').classList.toggle('active', mode === 'ocr');
 
-    if (mode === 'barcode') {
-      actionBtn.textContent = 'Start Barcode';
-      setStatus('Ready – press Start Barcode');
-    } else {
-      actionBtn.textContent = 'SCAN';
-      setStatus('Position green box over the text, then press SCAN');
-      initScanBox();
-      // Small delay helps the camera re-acquire cleanly
-      setTimeout(startCameraForOcr, 300);
-    }
-  });
+  document.getElementById('barcodeMode').style.display = mode === 'barcode' ? 'block' : 'none';
+  document.getElementById('ocrMode').style.display     = mode === 'ocr'     ? 'block' : 'none';
+
+  if (mode === 'barcode') {
+    actionBtn.textContent = 'Start Barcode';
+    setStatus('Ready – press Start Barcode');
+  } else {
+    actionBtn.textContent = 'SCAN';
+    setStatus('Position green box over the text, then press SCAN');
+    initScanBox();
+    // Give the browser a moment to fully release the previous stream
+    setTimeout(() => startCameraForOcr(), 400);
+  }
 }
 
 function setStatus(msg) {
@@ -243,6 +243,10 @@ function sendResult(value) {
 async function startBarcode() {
   if (isBarcodeRunning) return;
 
+  // Make sure the container is empty and visible
+  const reader = document.getElementById('reader');
+  reader.innerHTML = '';
+
   html5QrCode = new Html5Qrcode('reader');
 
   const config = {
@@ -251,7 +255,6 @@ async function startBarcode() {
     aspectRatio: 1.777
   };
 
-  // Restrict formats if the array is not empty
   if (BARCODE_FORMATS.length > 0) {
     config.formatsToSupport = BARCODE_FORMATS;
   }
@@ -263,17 +266,17 @@ async function startBarcode() {
       (decodedText) => {
         sendResult(decodedText);
         setStatus('✅ ' + decodedText);
-        // Optional: auto-stop after success
-        // stopBarcode();
       },
-      () => {} // ignore continuous errors
+      () => {} // ignore continuous scan errors
     );
+
     isBarcodeRunning = true;
     actionBtn.textContent = 'Stop Barcode';
     setStatus('Scanning barcodes…');
   } catch (err) {
     console.error(err);
-    setStatus('Camera error – check permissions');
+    setStatus('Camera error – check permissions or try switching modes again');
+    isBarcodeRunning = false;
   }
 }
 
@@ -469,32 +472,48 @@ function handleAction() {
 }
 
 async function stopEverything() {
-  // Stop barcode scanner
-  if (html5QrCode && isBarcodeRunning) {
+  // 1. Stop barcode scanner cleanly
+  if (html5QrCode) {
     try {
-      await html5QrCode.stop();
+      if (isBarcodeRunning) {
+        await html5QrCode.stop();
+      }
       html5QrCode.clear();
-    } catch (e) {}
+    } catch (e) {
+      console.log('Barcode stop error (safe to ignore):', e);
+    }
   }
   isBarcodeRunning = false;
   html5QrCode = null;
 
-  // Stop OCR camera stream
+  // 2. Stop OCR video stream
   if (videoStream) {
-    videoStream.getTracks().forEach(t => t.stop());
+    videoStream.getTracks().forEach(track => {
+      track.stop();
+    });
     videoStream = null;
   }
+
+  // 3. Clear the video element
   if (video.srcObject) {
     video.srcObject = null;
   }
 
-  // Clear the reader div so html5-qrcode can re-create cleanly
+  // 4. Completely empty the reader container so html5-qrcode can recreate it
   const reader = document.getElementById('reader');
-  if (reader) reader.innerHTML = '';
+  if (reader) {
+    reader.innerHTML = '';
+  }
+
+  // Small pause so the browser actually releases the camera hardware
+  await new Promise(resolve => setTimeout(resolve, 350));
 }
 
-// Start in barcode mode
-switchMode('barcode');
+// Initial setup – do not call switchMode on load
+currentMode = 'barcode';
+document.getElementById('barcodeMode').style.display = 'block';
+document.getElementById('ocrMode').style.display = 'none';
+setStatus('Ready – press Start Barcode');
 </script>
 </body>
 </html>
