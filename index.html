@@ -1,56 +1,478 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FS Barcode Scanner</title>
-<script src="https://unpkg.com/html5-qrcode"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FS Scanner (Barcode + OCR)</title>
+
+<!-- Libraries -->
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/interactjs@1.10.27/dist/interact.min.js"></script>
+
 <style>
-  body { margin:0; padding:0; background:#000; color:white; font-family:Arial, sans-serif; }
-  #reader { width:100%; max-width:600px; margin:20px auto; }
-  button { padding:18px 40px; font-size:24px; background:#0099ff; color:white; border:none; border-radius:12px; margin:10px; }
-  #result { font-size:28px; padding:15px; background:#111; margin:10px; border-radius:8px; text-align:center; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #000;
+    color: white;
+    font-family: Arial, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Top bar */
+  #topBar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10000;
+    background: rgba(0,0,0,0.85);
+    padding: 12px 10px 10px;
+    text-align: center;
+  }
+  h2 { font-size: 20px; margin-bottom: 8px; }
+  #scanResult {
+    width: 95%; max-width: 480px;
+    margin: 0 auto 10px;
+    padding: 11px;
+    font-size: 18px;
+    border-radius: 8px;
+    background: #111;
+    color: #0f0;
+    border: 1px solid #333;
+    text-align: center;
+  }
+
+  /* Mode toggle */
+  .mode-toggle {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .mode-btn {
+    padding: 8px 22px;
+    font-size: 15px;
+    font-weight: bold;
+    border: none;
+    border-radius: 20px;
+    background: #333;
+    color: #aaa;
+    cursor: pointer;
+  }
+  .mode-btn.active {
+    background: #0099ff;
+    color: white;
+  }
+
+  /* Main content area */
+  #content {
+    position: fixed;
+    top: 130px;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #000;
+  }
+
+  /* ===== BARCODE MODE ===== */
+  #barcodeMode {
+    width: 100%;
+    height: 100%;
+    display: none;
+  }
+  #reader {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  /* ===== OCR MODE ===== */
+  #ocrMode {
+    width: 100%;
+    height: 100%;
+    display: none;
+    position: relative;
+  }
+  #video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  #overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  #scanWindow {
+    position: absolute;
+    border: 3px solid #00ff88;
+    background: rgba(0,255,136,0.08);
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.55);
+    min-width: 140px;
+    min-height: 55px;
+    touch-action: none;
+  }
+
+  /* Status + buttons */
+  #status {
+    position: fixed;
+    bottom: 95px;
+    left: 12px;
+    right: 12px;
+    background: rgba(0,0,0,0.8);
+    padding: 11px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 15px;
+    z-index: 10000;
+  }
+  #actionBtn {
+    position: fixed;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 15px 48px;
+    font-size: 20px;
+    font-weight: bold;
+    background: #0099ff;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    z-index: 10001;
+    box-shadow: 0 4px 18px rgba(0,153,255,0.4);
+  }
+  #actionBtn:active { transform: translateX(-50%) scale(0.96); }
+  #actionBtn:disabled { opacity: 0.6; }
 </style>
 </head>
 <body>
-<div style="text-align:center; padding:20px;">
-  <h2>FS Barcode Scanner</h2>
-  <div id="reader"></div>
-  <div id="result">Waiting for scan...</div>
-  <button onclick="stopScanner()">Stop Scanner</button>
+
+<div id="topBar">
+  <h2>FS Scanner</h2>
+  <input type="text" id="scanResult" placeholder="Result appears here" readonly>
+
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="btnBarcode" onclick="switchMode('barcode')">Barcode</button>
+    <button class="mode-btn" id="btnOcr" onclick="switchMode('ocr')">OCR Text</button>
+  </div>
 </div>
 
+<div id="content">
+  <!-- Barcode mode -->
+  <div id="barcodeMode">
+    <div id="reader"></div>
+  </div>
+
+  <!-- OCR mode -->
+  <div id="ocrMode">
+    <video id="video" autoplay playsinline muted></video>
+    <div id="overlay">
+      <div id="scanWindow"></div>
+    </div>
+  </div>
+</div>
+
+<div id="status">Choose mode and start scanning</div>
+<button id="actionBtn" onclick="handleAction()">Start Barcode</button>
+
 <script>
-let html5QrCode;
+// ========== EASY TO EDIT SECTION ==========
+const ALLOWED_PREFIXES = [
+  'G900', 'W900', 'M900', 'T900',
+  'SW801', 'FS801', 'SG801'
+];
 
-function startScanner() {
-  html5QrCode = new Html5Qrcode("reader");
+// Only these barcode formats will be scanned (leave empty array for all)
+const BARCODE_FORMATS = [
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.QR_CODE
+  // add / remove as needed
+];
+// ==========================================
 
-  html5QrCode.start(
-    { facingMode: "environment" },
-    { fps: 10, qrbox: { width: 300, height: 150 } },
-    (decodedText) => {
-      document.getElementById("result").innerHTML = "✅ " + decodedText;
-      
-      // Send back to main page
-      if (window.opener) {
-        window.opener.postMessage({ type: "barcode", value: decodedText }, "*");
-      }
-      
-      // Optional: auto close after success
-      // setTimeout(() => window.close(), 1000);
-    },
-    (error) => { /* silent */ }
-  ).catch(err => {
+let currentMode = 'barcode';
+let html5QrCode = null;
+let isBarcodeRunning = false;
+let isOcrScanning = false;
+let videoStream = null;
+
+const resultInput = document.getElementById('scanResult');
+const statusEl    = document.getElementById('status');
+const actionBtn   = document.getElementById('actionBtn');
+const video       = document.getElementById('video');
+const scanWindow  = document.getElementById('scanWindow');
+
+// ---------- Mode switching ----------
+function switchMode(mode) {
+  if (mode === currentMode) return;
+
+  // Stop whatever is running
+  stopEverything();
+
+  currentMode = mode;
+
+  document.getElementById('btnBarcode').classList.toggle('active', mode === 'barcode');
+  document.getElementById('btnOcr').classList.toggle('active', mode === 'ocr');
+
+  document.getElementById('barcodeMode').style.display = mode === 'barcode' ? 'block' : 'none';
+  document.getElementById('ocrMode').style.display     = mode === 'ocr'     ? 'block' : 'none';
+
+  if (mode === 'barcode') {
+    actionBtn.textContent = 'Start Barcode';
+    setStatus('Ready – press Start Barcode');
+  } else {
+    actionBtn.textContent = 'SCAN';
+    setStatus('Position green box over the text, then press SCAN');
+    initScanBox();
+    startCameraForOcr();
+  }
+}
+
+function setStatus(msg) {
+  statusEl.textContent = msg;
+}
+
+function sendResult(value) {
+  resultInput.value = value;
+  if (window.opener) {
+    window.opener.postMessage({ type: 'barcode', value: value }, '*');
+  }
+}
+
+// ---------- BARCODE MODE ----------
+async function startBarcode() {
+  if (isBarcodeRunning) return;
+
+  html5QrCode = new Html5Qrcode('reader');
+
+  const config = {
+    fps: 10,
+    qrbox: { width: 280, height: 140 },
+    aspectRatio: 1.777
+  };
+
+  // Restrict formats if the array is not empty
+  if (BARCODE_FORMATS.length > 0) {
+    config.formatsToSupport = BARCODE_FORMATS;
+  }
+
+  try {
+    await html5QrCode.start(
+      { facingMode: 'environment' },
+      config,
+      (decodedText) => {
+        sendResult(decodedText);
+        setStatus('✅ ' + decodedText);
+        // Optional: auto-stop after success
+        // stopBarcode();
+      },
+      () => {} // ignore continuous errors
+    );
+    isBarcodeRunning = true;
+    actionBtn.textContent = 'Stop Barcode';
+    setStatus('Scanning barcodes…');
+  } catch (err) {
     console.error(err);
-    document.getElementById("result").innerHTML = "Camera error";
+    setStatus('Camera error – check permissions');
+  }
+}
+
+async function stopBarcode() {
+  if (html5QrCode && isBarcodeRunning) {
+    try {
+      await html5QrCode.stop();
+      html5QrCode.clear();
+    } catch (e) {}
+  }
+  isBarcodeRunning = false;
+  actionBtn.textContent = 'Start Barcode';
+  setStatus('Barcode stopped');
+}
+
+// ---------- OCR MODE ----------
+async function startCameraForOcr() {
+  try {
+    if (videoStream) {
+      videoStream.getTracks().forEach(t => t.stop());
+    }
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    });
+    video.srcObject = videoStream;
+    await video.play();
+  } catch (e) {
+    console.error(e);
+    setStatus('Camera access failed');
+  }
+}
+
+function initScanBox() {
+  const w = Math.min(window.innerWidth * 0.85, 400);
+  const h = 80;
+  scanWindow.style.width  = w + 'px';
+  scanWindow.style.height = h + 'px';
+  scanWindow.style.left   = ((window.innerWidth - w) / 2) + 'px';
+  scanWindow.style.top    = (window.innerHeight * 0.36) + 'px';
+  scanWindow.style.transform = 'none';
+  scanWindow.removeAttribute('data-x');
+  scanWindow.removeAttribute('data-y');
+}
+
+// Make OCR box draggable + resizable
+interact('#scanWindow')
+  .draggable({
+    inertia: false,
+    modifiers: [
+      interact.modifiers.restrictRect({ restriction: 'parent', endOnly: true })
+    ],
+    listeners: {
+      move(event) {
+        const target = event.target;
+        const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+        const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+        target.style.transform = `translate(${x}px, ${y}px)`;
+        target.setAttribute('data-x', x);
+        target.setAttribute('data-y', y);
+      }
+    }
+  })
+  .resizable({
+    edges: { left: true, right: true, bottom: true, top: true },
+    modifiers: [
+      interact.modifiers.restrictSize({ min: { width: 120, height: 50 } })
+    ],
+    listeners: {
+      move(event) {
+        const target = event.target;
+        let x = parseFloat(target.getAttribute('data-x')) || 0;
+        let y = parseFloat(target.getAttribute('data-y')) || 0;
+
+        target.style.width  = event.rect.width + 'px';
+        target.style.height = event.rect.height + 'px';
+
+        x += event.deltaRect.left;
+        y += event.deltaRect.top;
+
+        target.style.transform = `translate(${x}px, ${y}px)`;
+        target.setAttribute('data-x', x);
+        target.setAttribute('data-y', y);
+      }
+    }
   });
+
+async function runOcr() {
+  if (isOcrScanning) return;
+  isOcrScanning = true;
+  actionBtn.disabled = true;
+  actionBtn.textContent = 'Scanning…';
+  setStatus('Scanning…');
+
+  try {
+    const rect  = scanWindow.getBoundingClientRect();
+    const vRect = video.getBoundingClientRect();
+
+    const scaleX = video.videoWidth  / vRect.width;
+    const scaleY = video.videoHeight / vRect.height;
+
+    const sx = (rect.left - vRect.left) * scaleX;
+    const sy = (rect.top  - vRect.top)  * scaleY;
+    const sw = rect.width  * scaleX;
+    const sh = rect.height * scaleY;
+
+    const canvas = document.createElement('canvas');
+    canvas.width  = Math.max(1, Math.floor(sw));
+    canvas.height = Math.max(1, Math.floor(sh));
+    const ctx = canvas.getContext('2d');
+
+    ctx.filter = 'grayscale(100%) contrast(180%) brightness(110%)';
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+
+    const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
+      tessedit_pageseg_mode: '7',
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/-',
+      preserve_interword_spaces: '0'
+    });
+
+    console.log('Raw OCR:', text);
+
+    // Safe cleaning
+    let cleaned = text.toUpperCase().replace(/\s+/g, '');
+
+    // Protect prefixes
+    const protectedMap = {};
+    ALLOWED_PREFIXES.forEach((p, i) => {
+      const token = `__P${i}__`;
+      protectedMap[token] = p;
+      cleaned = cleaned.replaceAll(p, token);
+    });
+
+    // Common OCR mistakes
+    cleaned = cleaned
+      .replace(/O/g, '0')
+      .replace(/[IL]/g, '1')
+      .replace(/B/g, '8')
+      .replace(/S/g, '5')
+      .replace(/Z/g, '2')
+      .replace(/G/g, '6');
+
+    // Restore prefixes
+    Object.entries(protectedMap).forEach(([token, original]) => {
+      cleaned = cleaned.replaceAll(token, original);
+    });
+
+    cleaned = cleaned.replace(/[^A-Z0-9/-]/g, '');
+    console.log('Cleaned:', cleaned);
+
+    // Match
+    const prefixPattern = ALLOWED_PREFIXES.join('|');
+    const regex = new RegExp(`(${prefixPattern})[0-9]{5,}(?:[-/][0-9]+)*`, 'i');
+    const match = cleaned.match(regex);
+
+    if (match) {
+      const final = match[0].toUpperCase();
+      sendResult(final);
+      setStatus('✅ ' + final);
+    } else {
+      resultInput.value = cleaned.substring(0, 40) || '(nothing readable)';
+      setStatus('No match – tighten box or try again');
+    }
+  } catch (err) {
+    console.error(err);
+    setStatus('OCR error – try again');
+  } finally {
+    isOcrScanning = false;
+    actionBtn.disabled = false;
+    actionBtn.textContent = 'SCAN';
+  }
 }
 
-function stopScanner() {
-  if (html5QrCode) html5QrCode.stop();
+// ---------- Shared ----------
+function handleAction() {
+  if (currentMode === 'barcode') {
+    if (isBarcodeRunning) {
+      stopBarcode();
+    } else {
+      startBarcode();
+    }
+  } else {
+    runOcr();
+  }
 }
 
-startScanner();
+function stopEverything() {
+  stopBarcode();
+  if (videoStream) {
+    videoStream.getTracks().forEach(t => t.stop());
+    videoStream = null;
+  }
+}
+
+// Start in barcode mode
+switchMode('barcode');
 </script>
 </body>
 </html>
